@@ -29,6 +29,7 @@ def test_build_index_from_chunks() -> None:
     assert index.matrix.shape[0] == 2
     assert index.chunks == chunks
     assert index.created_at
+    assert index.retrieval_mode == "tfidf"
 
 
 def test_save_and_load_index_preserves_chunks(tmp_path: Path) -> None:
@@ -48,6 +49,23 @@ def test_save_and_load_index_preserves_chunks(tmp_path: Path) -> None:
 def test_empty_chunk_list_handled_cleanly() -> None:
     with pytest.raises(ValueError, match="no non-empty chunks"):
         build_index([])
+
+
+def test_auto_mode_falls_back_to_tfidf_without_key(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    index = build_index([make_chunk("local search only")], retrieval_mode="auto")
+
+    assert index.retrieval_mode == "tfidf"
+    assert index.embedding_matrix is None
+    assert index.warnings
+
+
+def test_embedding_mode_requires_openai_key(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+        build_index([make_chunk("semantic search")], retrieval_mode="embedding")
 
 
 def test_empty_folder_cannot_be_indexed(tmp_path: Path) -> None:

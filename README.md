@@ -4,7 +4,7 @@
 
 Personal Docs QA is a local document question-answering app for small folders of personal documents. It supports both a Typer CLI and a lightweight FastAPI web app.
 
-Users can index Markdown, plain text, and text-based PDF documents, then ask natural-language questions over the indexed content. The app retrieves relevant source chunks with TF-IDF and returns conservative extractive answers with visible citations back to the retrieved chunks.
+Users can index Markdown, plain text, and text-based PDF documents, then ask natural-language questions over the indexed content. The default no-key path retrieves relevant source chunks with TF-IDF, while optional OpenAI embedding and hybrid modes are available when an API key is configured. Answers include visible citations back to retrieved chunks.
 
 The default path is fully local. No API key, external model, hosted database, or cloud service is required.
 
@@ -47,7 +47,13 @@ This web app is intentionally small: static HTML/CSS/JS served by FastAPI, with 
 docqa ingest sample_docs
 ```
 
-Loads supported documents, chunks them, builds a local TF-IDF index, and saves it to `.docqa/index.joblib`.
+Loads supported documents, chunks them, builds a local index, and saves it to `.docqa/index.joblib`.
+
+```bash
+docqa ingest sample_docs --retrieval-mode tfidf
+```
+
+Forces local TF-IDF retrieval. Other modes are documented below.
 
 ```bash
 docqa ask "What is the inspection date?"
@@ -82,7 +88,7 @@ Loaders (.txt / .md / .pdf)
   ↓
 Chunker
   ↓
-TF-IDF Index
+Search Index
   ↓
 Retriever
   ↓
@@ -95,17 +101,35 @@ The important design choice is that both user interfaces call the same modules:
 
 - `loaders.py` reads supported files and returns normalized `Document` objects.
 - `chunker.py` creates paragraph-aware chunks with overlap.
-- `indexer.py` builds and persists the TF-IDF index with `joblib`.
+- `indexer.py` builds and persists the local search index with `joblib`.
 - `retriever.py` searches the matrix with cosine similarity.
 - `answerer.py` builds conservative extractive answers from retrieved chunks.
 
 ## Retrieval Choice
 
-I chose TF-IDF because it is local, deterministic, dependency-light, and fast. For the expected take-home size of about 20 documents and 50,000 words, it is more than adequate and keeps the system easy to reason about.
+The default retrieval configuration is `auto`: if `OPENAI_API_KEY` is present, the app uses hybrid retrieval; otherwise it falls back to TF-IDF with a warning. This preserves the no-key fresh clone path while allowing an optional semantic retrieval upgrade.
+
+Available modes:
+
+- `tfidf`: local TF-IDF only
+- `embedding`: OpenAI embeddings only, requires `OPENAI_API_KEY`
+- `hybrid`: combines TF-IDF and OpenAI embedding scores, requires `OPENAI_API_KEY`
+- `auto`: uses `hybrid` when an API key exists, otherwise falls back to `tfidf`
+
+Environment variables:
+
+- `DOCQA_RETRIEVAL_MODE`
+- `OPENAI_API_KEY`
+- `OPENAI_EMBEDDING_MODEL`
+- `OPENAI_EMBEDDING_DIMENSIONS`
+
+The default embedding model is `text-embedding-3-small`. The default embedding dimension is `512`, chosen to keep persisted local indexes small and fast for this take-home scale. OpenAI's `text-embedding-3-small` can use larger dimensions, but 512 is a practical speed/storage tradeoff for about 20 documents and 50,000 words.
+
+I chose TF-IDF as the guaranteed baseline because it is local, deterministic, dependency-light, and fast. For the expected take-home size, it is more than adequate and keeps the system easy to reason about.
 
 TF-IDF also avoids requiring API keys. A reviewer can clone the repo, install dependencies, and run the app without configuring credentials.
 
-The main weakness is that TF-IDF is lexical, not semantic. It can miss paraphrases or questions that use very different wording from the documents. The app surfaces weak matches through low confidence and warnings rather than pretending the answer is stronger than the evidence.
+The main weakness is that TF-IDF is lexical, not semantic. It can miss paraphrases or questions that use very different wording from the documents. Embedding and hybrid modes help with that, but they are optional because they require an OpenAI API key. The app surfaces weak matches through low confidence and warnings rather than pretending the answer is stronger than the evidence.
 
 ## What I Built
 
@@ -114,6 +138,7 @@ The main weakness is that TF-IDF is lexical, not semantic. It can miss paraphras
 - TXT, Markdown, and PDF loading
 - Paragraph-aware chunking with overlap
 - Local TF-IDF retrieval
+- Optional OpenAI embedding and hybrid retrieval
 - Extractive answers with visible citations
 - Local index persistence with `joblib`
 - Lightweight eval harness
@@ -136,7 +161,7 @@ The main weakness is that TF-IDF is lexical, not semantic. It can miss paraphras
 - Authentication: unnecessary for a local demo
 - Database storage: `joblib` persistence is simpler and sufficient here
 - Cloud deployment: not needed for the assignment goals
-- Advanced semantic embeddings: better recall, but more dependencies and often API setup
+- Vector database or advanced semantic retrieval pipeline: useful later, but more scope than needed here
 - Production-grade LLM answer synthesis: I prioritized reliable citations and avoiding hallucination
 
 ## What I Would Do With 4 More Hours

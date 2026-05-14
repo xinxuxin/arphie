@@ -46,7 +46,7 @@ def test_ingest_path_and_ask(tmp_path: Path, monkeypatch) -> None:
 
     assert ingest_response["document_count"] == 1
     assert ingest_response["chunk_count"] == 1
-    assert ingest_response["warnings"] == []
+    assert "using tfidf" in ingest_response["warnings"][0]
     assert "budget.txt" in ask_response["answer"]
     assert ask_response["sources"][0]["file_name"] == "budget.txt"
     assert ask_response["sources"][0]["rank"] == 1
@@ -67,7 +67,7 @@ async def test_upload_and_index(tmp_path: Path, monkeypatch) -> None:
 
     assert response["document_count"] == 1
     assert response["chunk_count"] == 1
-    assert response["warnings"] == []
+    assert "using tfidf" in response["warnings"][0]
 
     ask_response = ask(AskRequest(question="What should I bring for travel?"))
     assert ask_response["sources"][0]["file_name"] == "travel.md"

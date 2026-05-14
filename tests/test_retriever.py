@@ -1,7 +1,9 @@
 import pytest
+import numpy as np
 
 from personal_docs_qa.indexer import build_index
 from personal_docs_qa.models import Chunk
+from personal_docs_qa import retriever
 from personal_docs_qa.retriever import search
 
 
@@ -55,3 +57,17 @@ def test_unrelated_query_gives_low_scores() -> None:
     assert len(results) == 2
     assert all(result.score == 0 for result in results)
     assert {result.chunk.id for result in results}.issubset({"chunk-1", "chunk-2"})
+
+
+def test_embedding_search_uses_existing_chunks(monkeypatch) -> None:
+    chunks = [make_chunk("alpha", 1), make_chunk("beta", 2)]
+    index = build_index(chunks)
+    index.retrieval_mode = "embedding"
+    index.embedding_matrix = np.array([[1.0, 0.0], [0.0, 1.0]])
+    index.embedding_model = "text-embedding-3-small"
+    index.embedding_dimensions = 512
+    monkeypatch.setattr(retriever, "embed_query", lambda *args, **kwargs: [0.0, 1.0])
+
+    results = search(index, "semantic beta", top_k=1)
+
+    assert results[0].chunk == chunks[1]

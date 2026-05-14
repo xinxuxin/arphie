@@ -19,6 +19,7 @@ UPLOAD_ROOT = Path(".docqa/uploads")
 
 class IngestPathRequest(BaseModel):
     folder_path: str
+    retrieval_mode: str | None = None
 
 
 class AskRequest(BaseModel):
@@ -59,7 +60,11 @@ def create_app() -> FastAPI:
     @app.post("/api/ingest-path")
     def ingest_path(request: IngestPathRequest) -> dict:
         try:
-            result = index_folder_with_warnings(request.folder_path, WEB_INDEX_PATH)
+            result = index_folder_with_warnings(
+                request.folder_path,
+                WEB_INDEX_PATH,
+                retrieval_mode=request.retrieval_mode,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

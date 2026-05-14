@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from personal_docs_qa.answerer import answer_question
+from personal_docs_qa.config import VALID_RETRIEVAL_MODES, get_default_retrieval_mode
 from personal_docs_qa.indexer import DEFAULT_INDEX_PATH, index_folder_with_warnings, load_index
 from personal_docs_qa.retriever import search
 
@@ -62,10 +63,17 @@ def _print_sources(results) -> None:
 def ingest(
     folder: Path = typer.Argument(..., help="Folder of .txt, .md, and .pdf documents."),
     index_path: Path = typer.Option(DEFAULT_INDEX_PATH, help="Where to save the local index."),
+    retrieval_mode: str = typer.Option(
+        get_default_retrieval_mode(),
+        help="Retrieval mode: tfidf, embedding, hybrid, or auto.",
+    ),
 ) -> None:
-    """Load documents, chunk them, and build a local TF-IDF index."""
+    """Load documents, chunk them, and build a local searchable index."""
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        console.print(f"[red]Invalid retrieval mode: {retrieval_mode}[/red]")
+        raise typer.Exit(code=1)
     try:
-        result = index_folder_with_warnings(folder, index_path=index_path)
+        result = index_folder_with_warnings(folder, index_path=index_path, retrieval_mode=retrieval_mode)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
@@ -74,6 +82,7 @@ def ingest(
     console.print(Panel.fit("Index built successfully", style="green"))
     console.print(f"Documents loaded: [bold]{index.document_count}[/bold]")
     console.print(f"Chunks indexed: [bold]{index.chunk_count}[/bold]")
+    console.print(f"Retrieval mode: [bold]{index.retrieval_mode}[/bold]")
     console.print(f"Index path: [bold]{index_path}[/bold]")
     if result.warnings:
         console.print("[yellow]Warnings:[/yellow]")
@@ -102,11 +111,12 @@ def ask(
 def search_command(
     query: str = typer.Argument(..., help="Search query."),
     top_k: int = typer.Option(5, help="Number of chunks to retrieve."),
+    retrieval_mode: str | None = typer.Option(None, help="Override retrieval mode for this search."),
 ) -> None:
     """Search the saved local index and print matching chunks."""
     index = _load_default_index()
     try:
-        results = search(index, query, top_k=top_k)
+        results = search(index, query, top_k=top_k, retrieval_mode=retrieval_mode)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
