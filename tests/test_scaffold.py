@@ -43,7 +43,11 @@ def test_cli_ingest_and_ask(tmp_path) -> None:
 
     assert ingest_result.exit_code == 0
     assert "Documents loaded" in ingest_result.output
+    assert "Retrieval mode requested" in ingest_result.output
+    assert "Embeddings created" in ingest_result.output
     assert ask_result.exit_code == 0
+    assert "Retrieval mode used" in ask_result.output
+    assert "Answer mode used" in ask_result.output
     assert "budget.txt" in ask_result.output
 
 

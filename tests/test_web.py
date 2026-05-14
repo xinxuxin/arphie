@@ -22,6 +22,19 @@ def test_health() -> None:
     assert health() == {"status": "ok"}
 
 
+def test_config() -> None:
+    config = get_endpoint("/api/config", "GET")
+
+    body = config()
+
+    assert body["supported_retrieval_modes"] == ["auto", "tfidf", "embedding", "hybrid"]
+    assert body["supported_answer_modes"] == ["auto", "openai", "local"]
+    assert body["default_retrieval_mode"] == "auto"
+    assert body["default_answer_mode"] == "auto"
+    assert body["embedding_model"] == "text-embedding-3-small"
+    assert "api" not in body
+
+
 def test_ask_without_web_index_returns_helpful_error(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     ask = get_endpoint("/api/ask", "POST")
@@ -46,10 +59,24 @@ def test_ingest_path_and_ask(tmp_path: Path, monkeypatch) -> None:
 
     assert ingest_response["document_count"] == 1
     assert ingest_response["chunk_count"] == 1
+    assert ingest_response["retrieval_mode_requested"] == "auto"
+    assert ingest_response["retrieval_mode_built"] == "tfidf"
+    assert ingest_response["embeddings_created"] is False
+    assert ingest_response["embedding_model"] is None
     assert "using tfidf" in ingest_response["warnings"][0]
+    assert ask_response["question"] == "What is the grocery budget?"
+    assert ask_response["retrieval_mode_requested"] == "auto"
+    assert ask_response["retrieval_mode_used"] == "tfidf"
+    assert ask_response["retrieval_fallback_used"] is True
+    assert ask_response["answer_mode_requested"] == "auto"
+    assert ask_response["answer_mode_used"] == "local"
     assert "budget.txt" in ask_response["answer"]
     assert ask_response["sources"][0]["file_name"] == "budget.txt"
     assert ask_response["sources"][0]["rank"] == 1
+    assert ask_response["sources"][0]["score_tfidf"] is not None
+    assert ask_response["sources"][0]["score_embedding"] is None
+    assert ask_response["sources"][0]["retrieval_mode_used"] == "tfidf"
+    assert ask_response["sources"][0]["chunk_id"]
     assert ask_response["sources"][0]["excerpt"]
 
 
@@ -67,6 +94,9 @@ async def test_upload_and_index(tmp_path: Path, monkeypatch) -> None:
 
     assert response["document_count"] == 1
     assert response["chunk_count"] == 1
+    assert response["retrieval_mode_requested"] == "auto"
+    assert response["retrieval_mode_built"] == "tfidf"
+    assert response["embeddings_created"] is False
     assert "using tfidf" in response["warnings"][0]
 
     ask_response = ask(AskRequest(question="What should I bring for travel?"))

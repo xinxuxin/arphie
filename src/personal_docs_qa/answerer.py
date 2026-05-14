@@ -1,7 +1,9 @@
 """Local extractive answer generation."""
 
 import re
+from dataclasses import dataclass
 
+from personal_docs_qa.config import is_openai_available
 from personal_docs_qa.indexer import LocalIndex
 from personal_docs_qa.models import Answer, SearchResult
 from personal_docs_qa.retriever import search
@@ -11,6 +13,18 @@ LOW_CONFIDENCE_THRESHOLD = 0.12
 HIGH_CONFIDENCE_THRESHOLD = 0.35
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 WORD_RE = re.compile(r"[a-zA-Z0-9']+")
+
+
+@dataclass(frozen=True)
+class AnswerResult:
+    answer: Answer
+    retrieval_mode_requested: str
+    retrieval_mode_used: str
+    retrieval_fallback_used: bool
+    answer_mode_requested: str
+    answer_mode_used: str
+    answer_fallback_used: bool
+    warnings: list[str]
 
 
 def _question_terms(question: str) -> set[str]:
@@ -88,47 +102,18 @@ def _confidence(results: list[SearchResult]) -> str:
     return "low"
 
 
-def answer_question(index: LocalIndex | None, question: str, top_k: int = 5) -> Answer:
-    """Create a concise local extractive answer with citations."""
-    if index is None:
-        return Answer(
-            question=question,
-            answer="No index is available. Run `docqa ingest <folder>` first.",
-            sources=[],
-            warnings=["No index was provided."],
-            confidence="low",
-        )
-    if not index.chunks:
-        return Answer(
-            question=question,
-            answer="The index has no chunks to search.",
-            sources=[],
-            warnings=["The loaded index is empty."],
-            confidence="low",
-        )
-
-    try:
-        results = search(index, question, top_k=top_k)
-    except ValueError as exc:
-        return Answer(
-            question=question,
-            answer=str(exc),
-            sources=[],
-            warnings=[str(exc)],
-            confidence="low",
-        )
-
+def _local_answer_from_results(question: str, results: list[SearchResult], warnings: list[str] | None = None) -> Answer:
+    warnings = list(warnings or [])
     if not results:
         return Answer(
             question=question,
             answer="I could not find any matching passages in the indexed documents.",
             sources=[],
-            warnings=["No search results were returned."],
+            warnings=[*warnings, "No search results were returned."],
             confidence="low",
         )
 
     confidence = _confidence(results)
-    warnings: list[str] = []
     useful_results = [result for result in results if result.score >= LOW_CONFIDENCE_THRESHOLD]
     positive_results = [result for result in results if result.score > 0]
     evidence_results = useful_results or positive_results or results
@@ -151,4 +136,129 @@ def answer_question(index: LocalIndex | None, question: str, top_k: int = 5) -> 
         sources=results,
         warnings=warnings,
         confidence=confidence,
+    )
+
+
+def _resolve_answer_mode(answer_mode: str) -> tuple[str, bool, list[str]]:
+    requested = answer_mode or "auto"
+    if requested == "local":
+        return "local", False, []
+    if requested == "openai":
+        if is_openai_available():
+            return "local", True, [
+                "OpenAI answer synthesis is not implemented yet; using local extractive answerer."
+            ]
+        return "local", True, ["OPENAI_API_KEY is not set; using local extractive answerer."]
+    if requested == "auto":
+        if is_openai_available():
+            return "local", True, [
+                "OpenAI answer synthesis is not implemented yet; using local extractive answerer."
+            ]
+        return "local", False, []
+    return "local", True, [f"Unknown answer mode '{requested}', using local extractive answerer."]
+
+
+def answer_question(
+    index: LocalIndex | None,
+    question: str,
+    top_k: int = 5,
+    retrieval_mode: str = "auto",
+) -> Answer:
+    """Create a concise local extractive answer with citations."""
+    return answer_question_with_metadata(
+        index,
+        question,
+        top_k=top_k,
+        retrieval_mode=retrieval_mode,
+        answer_mode="local",
+    ).answer
+
+
+def answer_question_with_metadata(
+    index: LocalIndex | None,
+    question: str,
+    top_k: int = 5,
+    retrieval_mode: str = "auto",
+    answer_mode: str = "auto",
+) -> AnswerResult:
+    """Create an answer and include mode/fallback metadata."""
+    retrieval_mode_requested = retrieval_mode or "auto"
+    answer_mode_requested = answer_mode or "auto"
+    answer_mode_used, answer_fallback_used, answer_warnings = _resolve_answer_mode(answer_mode_requested)
+
+    if index is None:
+        answer = Answer(
+            question=question,
+            answer="No index is available. Run `docqa ingest <folder>` first.",
+            sources=[],
+            warnings=[*answer_warnings, "No index was provided."],
+            confidence="low",
+        )
+        return AnswerResult(
+            answer=answer,
+            retrieval_mode_requested=retrieval_mode_requested,
+            retrieval_mode_used="none",
+            retrieval_fallback_used=False,
+            answer_mode_requested=answer_mode_requested,
+            answer_mode_used=answer_mode_used,
+            answer_fallback_used=answer_fallback_used,
+            warnings=answer.warnings,
+        )
+    if not index.chunks:
+        answer = Answer(
+            question=question,
+            answer="The index has no chunks to search.",
+            sources=[],
+            warnings=[*answer_warnings, "The loaded index is empty."],
+            confidence="low",
+        )
+        return AnswerResult(
+            answer=answer,
+            retrieval_mode_requested=retrieval_mode_requested,
+            retrieval_mode_used="none",
+            retrieval_fallback_used=False,
+            answer_mode_requested=answer_mode_requested,
+            answer_mode_used=answer_mode_used,
+            answer_fallback_used=answer_fallback_used,
+            warnings=answer.warnings,
+        )
+
+    try:
+        results = search(index, question, top_k=top_k, retrieval_mode=retrieval_mode_requested)
+    except ValueError as exc:
+        answer = Answer(
+            question=question,
+            answer=str(exc),
+            sources=[],
+            warnings=[*answer_warnings, str(exc)],
+            confidence="low",
+        )
+        return AnswerResult(
+            answer=answer,
+            retrieval_mode_requested=retrieval_mode_requested,
+            retrieval_mode_used="none",
+            retrieval_fallback_used=False,
+            answer_mode_requested=answer_mode_requested,
+            answer_mode_used=answer_mode_used,
+            answer_fallback_used=answer_fallback_used,
+            warnings=answer.warnings,
+        )
+
+    retrieval_mode_used = results[0].retrieval_mode_used if results else "none"
+    retrieval_fallback_used = retrieval_mode_requested != retrieval_mode_used
+    retrieval_warnings = []
+    if retrieval_fallback_used:
+        retrieval_warnings.append(
+            f"Retrieval fell back from {retrieval_mode_requested} to {retrieval_mode_used}."
+        )
+    answer = _local_answer_from_results(question, results, warnings=[*answer_warnings, *retrieval_warnings])
+    return AnswerResult(
+        answer=answer,
+        retrieval_mode_requested=retrieval_mode_requested,
+        retrieval_mode_used=retrieval_mode_used,
+        retrieval_fallback_used=retrieval_fallback_used,
+        answer_mode_requested=answer_mode_requested,
+        answer_mode_used=answer_mode_used,
+        answer_fallback_used=answer_fallback_used,
+        warnings=answer.warnings,
     )

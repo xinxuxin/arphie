@@ -4,9 +4,11 @@ import os
 
 
 VALID_RETRIEVAL_MODES = {"tfidf", "embedding", "hybrid", "auto"}
+VALID_ANSWER_MODES = {"local", "openai", "auto"}
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_EMBEDDING_DIMENSIONS = 512
 DEFAULT_RETRIEVAL_MODE = "auto"
+DEFAULT_ANSWER_MODE = "auto"
 
 
 def get_openai_api_key() -> str | None:
@@ -45,6 +47,12 @@ def get_default_retrieval_mode() -> str:
     """Return the configured retrieval mode."""
     mode = os.getenv("DOCQA_RETRIEVAL_MODE", DEFAULT_RETRIEVAL_MODE).strip().lower()
     return mode if mode in VALID_RETRIEVAL_MODES else DEFAULT_RETRIEVAL_MODE
+
+
+def get_default_answer_mode() -> str:
+    """Return the configured answer mode."""
+    mode = os.getenv("DOCQA_ANSWER_MODE", DEFAULT_ANSWER_MODE).strip().lower()
+    return mode if mode in VALID_ANSWER_MODES else DEFAULT_ANSWER_MODE
 
 
 def resolve_retrieval_mode(mode: str | None = None) -> tuple[str, list[str]]:

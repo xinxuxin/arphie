@@ -1,4 +1,4 @@
-from personal_docs_qa.answerer import answer_question
+from personal_docs_qa.answerer import answer_question, answer_question_with_metadata
 from personal_docs_qa.indexer import build_index
 from personal_docs_qa.models import Chunk
 
@@ -61,3 +61,22 @@ def test_citations_come_from_retrieved_chunks() -> None:
 
     assert answer.sources[0].chunk == chunk
     assert "[1: travel.md]" in answer.answer
+
+
+def test_answer_metadata_reports_modes_and_fallback() -> None:
+    index = build_index([make_chunk("The inspection date is Tuesday.", "lease.md", 1)])
+
+    result = answer_question_with_metadata(
+        index,
+        "What is the inspection date?",
+        retrieval_mode="auto",
+        answer_mode="openai",
+    )
+
+    assert result.retrieval_mode_requested == "auto"
+    assert result.retrieval_mode_used == "tfidf"
+    assert result.retrieval_fallback_used is True
+    assert result.answer_mode_requested == "openai"
+    assert result.answer_mode_used == "local"
+    assert result.answer_fallback_used is True
+    assert result.warnings

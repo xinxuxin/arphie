@@ -8,8 +8,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from personal_docs_qa.answerer import answer_question
-from personal_docs_qa.config import VALID_RETRIEVAL_MODES, get_default_retrieval_mode
+from personal_docs_qa.answerer import answer_question, answer_question_with_metadata
+from personal_docs_qa.config import (
+    VALID_ANSWER_MODES,
+    VALID_RETRIEVAL_MODES,
+    get_default_answer_mode,
+    get_default_retrieval_mode,
+)
 from personal_docs_qa.indexer import DEFAULT_INDEX_PATH, index_folder_with_warnings, load_index
 from personal_docs_qa.retriever import search
 
@@ -45,6 +50,9 @@ def _print_sources(results) -> None:
     table = Table(title="Sources")
     table.add_column("Rank", justify="right")
     table.add_column("Score", justify="right")
+    table.add_column("TF-IDF", justify="right")
+    table.add_column("Embed", justify="right")
+    table.add_column("Mode")
     table.add_column("File")
     table.add_column("Excerpt")
 
@@ -52,6 +60,9 @@ def _print_sources(results) -> None:
         table.add_row(
             str(result.rank),
             f"{result.score:.3f}",
+            f"{result.score_tfidf:.3f}" if result.score_tfidf is not None else "-",
+            f"{result.score_embedding:.3f}" if result.score_embedding is not None else "-",
+            result.retrieval_mode_used,
             result.chunk.file_name,
             _excerpt(result.chunk.text),
         )
@@ -80,9 +91,13 @@ def ingest(
 
     index = result.index
     console.print(Panel.fit("Index built successfully", style="green"))
+    console.print(f"Retrieval mode requested: [bold]{retrieval_mode}[/bold]")
+    console.print(f"Retrieval mode built: [bold]{index.retrieval_mode_built}[/bold]")
+    console.print(f"Embeddings created: [bold]{'yes' if index.chunk_embeddings is not None else 'no'}[/bold]")
+    if index.embedding_model:
+        console.print(f"Embedding model: [bold]{index.embedding_model}[/bold]")
     console.print(f"Documents loaded: [bold]{index.document_count}[/bold]")
     console.print(f"Chunks indexed: [bold]{index.chunk_count}[/bold]")
-    console.print(f"Retrieval mode: [bold]{index.retrieval_mode_built}[/bold]")
     console.print(f"Index path: [bold]{index_path}[/bold]")
     if result.warnings:
         console.print("[yellow]Warnings:[/yellow]")
@@ -94,15 +109,44 @@ def ingest(
 def ask(
     question: str = typer.Argument(..., help="Question to ask over the local index."),
     top_k: int = typer.Option(5, help="Number of chunks to retrieve."),
+    retrieval_mode: str = typer.Option(
+        get_default_retrieval_mode(),
+        help="Retrieval mode: auto, tfidf, embedding, or hybrid.",
+    ),
+    answer_mode: str = typer.Option(
+        get_default_answer_mode(),
+        help="Answer mode: auto, openai, or local.",
+    ),
 ) -> None:
     """Ask a question against the saved local index."""
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        console.print(f"[red]Invalid retrieval mode: {retrieval_mode}[/red]")
+        raise typer.Exit(code=1)
+    if answer_mode not in VALID_ANSWER_MODES:
+        console.print(f"[red]Invalid answer mode: {answer_mode}[/red]")
+        raise typer.Exit(code=1)
     index = _load_default_index()
-    answer = answer_question(index, question, top_k=top_k)
+    result = answer_question_with_metadata(
+        index,
+        question,
+        top_k=top_k,
+        retrieval_mode=retrieval_mode,
+        answer_mode=answer_mode,
+    )
+    answer = result.answer
 
     console.print(Panel(answer.answer, title=f"Answer ({answer.confidence} confidence)", expand=False))
+    console.print(f"Retrieval mode requested: [bold]{result.retrieval_mode_requested}[/bold]")
+    console.print(f"Retrieval mode used: [bold]{result.retrieval_mode_used}[/bold]")
+    console.print(f"Retrieval fallback used: [bold]{'yes' if result.retrieval_fallback_used else 'no'}[/bold]")
+    console.print(f"Answer mode requested: [bold]{result.answer_mode_requested}[/bold]")
+    console.print(f"Answer mode used: [bold]{result.answer_mode_used}[/bold]")
+    console.print(f"Answer fallback used: [bold]{'yes' if result.answer_fallback_used else 'no'}[/bold]")
+    console.print(f"Confidence: [bold]{answer.confidence}[/bold]")
     if answer.warnings:
+        console.print("[yellow]Warnings:[/yellow]")
         for warning in answer.warnings:
-            console.print(f"[yellow]{warning}[/yellow]")
+            console.print(f"[yellow]- {warning}[/yellow]")
     if answer.sources:
         _print_sources(answer.sources)
 
@@ -111,9 +155,15 @@ def ask(
 def search_command(
     query: str = typer.Argument(..., help="Search query."),
     top_k: int = typer.Option(5, help="Number of chunks to retrieve."),
-    retrieval_mode: str | None = typer.Option(None, help="Override retrieval mode for this search."),
+    retrieval_mode: str = typer.Option(
+        get_default_retrieval_mode(),
+        help="Retrieval mode: auto, tfidf, embedding, or hybrid.",
+    ),
 ) -> None:
     """Search the saved local index and print matching chunks."""
+    if retrieval_mode not in VALID_RETRIEVAL_MODES:
+        console.print(f"[red]Invalid retrieval mode: {retrieval_mode}[/red]")
+        raise typer.Exit(code=1)
     index = _load_default_index()
     try:
         results = search(index, query, top_k=top_k, retrieval_mode=retrieval_mode)
