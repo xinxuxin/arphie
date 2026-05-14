@@ -60,7 +60,9 @@ def embed_texts(
             ordered = sorted(response.data, key=lambda item: item.index)
             embeddings.extend([list(item.embedding) for item in ordered])
     except OpenAIError as exc:
-        raise OpenAIEmbeddingError(f"OpenAI embedding request failed: {exc}") from exc
+        raise OpenAIEmbeddingError(
+            "OpenAI embedding request failed. Check that OPENAI_API_KEY is valid and has access to embeddings."
+        ) from exc
     except Exception as exc:
         raise OpenAIEmbeddingError(f"Embedding request failed: {exc}") from exc
 

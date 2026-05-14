@@ -1,6 +1,6 @@
-from personal_docs_qa.answerer import answer_question, answer_question_with_metadata
+from personal_docs_qa.answerer import _local_answer_from_results, answer_question, answer_question_with_metadata
 from personal_docs_qa.indexer import build_index
-from personal_docs_qa.models import Chunk
+from personal_docs_qa.models import Chunk, SearchResult
 
 
 def make_chunk(text: str, file_name: str, index: int) -> Chunk:
@@ -51,6 +51,21 @@ def test_unrelated_question_does_not_invent_answer() -> None:
     assert answer.confidence == "low"
     assert answer.answer.startswith("I found related passages")
     assert "telescope" not in answer.answer.lower()
+
+
+def test_high_score_without_query_overlap_stays_low_confidence() -> None:
+    result = SearchResult(
+        rank=1,
+        score=1.0,
+        chunk=make_chunk("The project risks include retrieval tradeoffs.", "project.md", 1),
+        score_tfidf=0.0,
+        score_embedding=0.85,
+        retrieval_mode_used="hybrid",
+    )
+
+    answer = _local_answer_from_results("What does this folder say about travel plans to Japan?", [result])
+
+    assert answer.confidence == "low"
 
 
 def test_citations_come_from_retrieved_chunks() -> None:

@@ -30,6 +30,7 @@ class AnswerResult:
 def _question_terms(question: str) -> set[str]:
     stop_words = {
         "a",
+        "about",
         "an",
         "and",
         "are",
@@ -43,7 +44,13 @@ def _question_terms(question: str) -> set[str]:
         "it",
         "of",
         "on",
+        "say",
+        "says",
+        "that",
         "the",
+        "these",
+        "this",
+        "those",
         "to",
         "what",
         "when",
@@ -91,8 +98,21 @@ def _extract_sentences(results: list[SearchResult], question: str, limit: int = 
     return selected
 
 
-def _confidence(results: list[SearchResult]) -> str:
+def _has_query_overlap(results: list[SearchResult], question: str) -> bool:
+    question_terms = _question_terms(question)
+    if not question_terms:
+        return True
+    for result in results[:3]:
+        chunk_terms = {word.lower() for word in WORD_RE.findall(result.chunk.text)}
+        if question_terms & chunk_terms:
+            return True
+    return False
+
+
+def _confidence(results: list[SearchResult], question: str) -> str:
     if not results:
+        return "low"
+    if not _has_query_overlap(results, question):
         return "low"
     best_score = results[0].score
     if best_score >= HIGH_CONFIDENCE_THRESHOLD:
@@ -113,7 +133,7 @@ def _local_answer_from_results(question: str, results: list[SearchResult], warni
             confidence="low",
         )
 
-    confidence = _confidence(results)
+    confidence = _confidence(results, question)
     useful_results = [result for result in results if result.score >= LOW_CONFIDENCE_THRESHOLD]
     positive_results = [result for result in results if result.score > 0]
     evidence_results = useful_results or positive_results or results
