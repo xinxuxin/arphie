@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "personal-docs-qa"
+version = "0.1.0"
+description = "Small local document QA app with a shared CLI and web core."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "typer",
+    "rich",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "pypdf",
+    "scikit-learn",
+    "joblib",
+    "pytest",
+]
+
+[project.scripts]
+docqa = "personal_docs_qa.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+personal_docs_qa = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
