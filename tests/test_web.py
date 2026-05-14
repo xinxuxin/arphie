@@ -79,10 +79,16 @@ def test_ingest_path_and_ask(tmp_path: Path, monkeypatch) -> None:
     assert ask_response["sources"][0]["file_name"] == "budget.txt"
     assert ask_response["sources"][0]["rank"] == 1
     assert ask_response["sources"][0]["score_tfidf"] is not None
+    assert ask_response["sources"][0]["score_display"]
+    assert ask_response["sources"][0]["score_tfidf_display"]
+    assert ask_response["sources"][0]["score_embedding_display"] == "-"
     assert ask_response["sources"][0]["score_embedding"] is None
     assert ask_response["sources"][0]["retrieval_mode_used"] == "tfidf"
+    assert ask_response["sources"][0]["file_type"] == "TXT"
+    assert ask_response["sources"][0]["page_label"] is None
     assert ask_response["sources"][0]["chunk_id"]
     assert ask_response["sources"][0]["excerpt"]
+    assert "<mark>grocery</mark>" in ask_response["sources"][0]["excerpt_html"]
 
 
 @pytest.mark.anyio

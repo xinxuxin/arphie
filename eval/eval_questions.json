@@ -13,5 +13,12 @@
     "question": "What are the main project risks?",
     "expected_source": "project_notes.md",
     "expected_terms": ["risk", "retrieval"]
+  },
+  {
+    "question": "What does this folder say about travel plans to Japan?",
+    "expected_source": "none",
+    "expected_terms": ["Japan"],
+    "expected_confidence": "low",
+    "expected_warning": "insufficient evidence"
   }
 ]

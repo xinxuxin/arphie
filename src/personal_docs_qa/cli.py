@@ -1,12 +1,13 @@
 """Command-line interface for Personal Docs QA."""
 
+import re
 from pathlib import Path
 
 import typer
 import uvicorn
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
-from rich.table import Table
+from rich.text import Text
 
 from personal_docs_qa.answerer import answer_question, answer_question_with_metadata
 from personal_docs_qa.config import (
@@ -17,6 +18,7 @@ from personal_docs_qa.config import (
 )
 from personal_docs_qa.indexer import DEFAULT_INDEX_PATH, index_folder_with_warnings, load_index
 from personal_docs_qa.retriever import search
+from personal_docs_qa.source_format import format_score, query_terms, source_payload
 
 
 app = typer.Typer(
@@ -31,13 +33,6 @@ def main() -> None:
     """Ask questions over a local folder of personal documents."""
 
 
-def _excerpt(text: str, limit: int = 220) -> str:
-    compact = " ".join(text.split())
-    if len(compact) <= limit:
-        return compact
-    return compact[: limit - 3].rstrip() + "..."
-
-
 def _load_default_index():
     try:
         return load_index(DEFAULT_INDEX_PATH)
@@ -46,28 +41,38 @@ def _load_default_index():
         raise typer.Exit(code=1)
 
 
-def _print_sources(results) -> None:
-    table = Table(title="Sources")
-    table.add_column("Rank", justify="right")
-    table.add_column("Score", justify="right")
-    table.add_column("TF-IDF", justify="right")
-    table.add_column("Embed", justify="right")
-    table.add_column("Mode")
-    table.add_column("File")
-    table.add_column("Excerpt")
+def _highlight_excerpt(excerpt: str, query: str, retrieval_mode: str) -> Text:
+    text = Text(excerpt)
+    if retrieval_mode not in {"tfidf", "hybrid"}:
+        return text
+    for term in query_terms(query):
+        for match in re.finditer(re.escape(term), excerpt, flags=re.IGNORECASE):
+            text.stylize("bold yellow", match.start(), match.end())
+    return text
 
+
+def _print_sources(results, query: str = "") -> None:
+    console.print("[bold]Sources[/bold]")
     for result in results:
-        table.add_row(
-            str(result.rank),
-            f"{result.score:.3f}",
-            f"{result.score_tfidf:.3f}" if result.score_tfidf is not None else "-",
-            f"{result.score_embedding:.3f}" if result.score_embedding is not None else "-",
-            result.retrieval_mode_used,
-            result.chunk.file_name,
-            _excerpt(result.chunk.text),
+        source = source_payload(result, query=query)
+        scores = (
+            f"final {format_score(source['score'])} | "
+            f"tfidf {source['score_tfidf_display']} | "
+            f"embedding {source['score_embedding_display']}"
         )
+        page = f" | {source['page_label']}" if source["page_label"] else ""
+        meta = Text()
+        meta.append(f"{source['file_type']} ", style="bold")
+        meta.append(f"{source['retrieval_mode_used']} | {scores}{page}\n", style="cyan")
+        meta.append(str(source["chunk_id"]), style="dim")
 
-    console.print(table)
+        console.print(
+            Panel(
+                Group(meta, _highlight_excerpt(source["excerpt"], query, source["retrieval_mode_used"])),
+                title=f"#{source['rank']} {source['file_name']}",
+                expand=False,
+            )
+        )
 
 
 @app.command()
@@ -148,7 +153,7 @@ def ask(
         for warning in answer.warnings:
             console.print(f"[yellow]- {warning}[/yellow]")
     if answer.sources:
-        _print_sources(answer.sources)
+        _print_sources(answer.sources, query=question)
 
 
 @app.command(name="search")
@@ -175,7 +180,7 @@ def search_command(
         console.print("[yellow]No results found.[/yellow]")
         return
 
-    _print_sources(results)
+    _print_sources(results, query=query)
 
 
 @app.command()
@@ -216,7 +221,7 @@ def demo() -> None:
     for question in questions:
         answer = answer_question(index, question, top_k=3)
         console.print(Panel(answer.answer, title=question, expand=False))
-        _print_sources(answer.sources[:2])
+        _print_sources(answer.sources[:2], query=question)
 
 
 if __name__ == "__main__":

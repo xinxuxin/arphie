@@ -455,10 +455,26 @@ h3 {
   font-size: 0.86rem;
 }
 
+.source-meta span:not(.badge) {
+  align-self: center;
+}
+
+.source-chunk {
+  color: #7d8479;
+  font-size: 0.78rem;
+}
+
 .source-excerpt {
   margin: 12px 0 0;
   color: #454b42;
   line-height: 1.52;
+}
+
+.source-excerpt mark {
+  border-radius: 3px;
+  background: #ffe08a;
+  color: #242013;
+  padding: 0 2px;
 }
 
 .source-excerpt.collapsed {

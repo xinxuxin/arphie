@@ -120,7 +120,7 @@ def _local_answer_from_results(question: str, results: list[SearchResult], warni
     answer_sentences = _extract_sentences(evidence_results, question)
 
     if confidence == "low":
-        warnings.append("Top retrieval scores are weak; the answer may be incomplete.")
+        warnings.append("Top retrieval scores are weak; there may be insufficient evidence to answer fully.")
         prefix = "I found related passages, but they may not fully answer the question."
         if answer_sentences:
             answer_text = f"{prefix} " + " ".join(answer_sentences[:2])

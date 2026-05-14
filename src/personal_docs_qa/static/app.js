@@ -273,13 +273,17 @@ function renderSources(sources = []) {
 
     card.querySelector(".source-rank").textContent = `#${source.rank}`;
     card.querySelector(".source-file").textContent = source.file_name;
-    card.querySelector(".source-score").textContent = `Score ${formatScore(source.score)}`;
+    card.querySelector(".source-score").textContent = `Score ${source.score_display || formatScore(source.score)}`;
     const sourceMode = card.querySelector(".source-mode");
     sourceMode.textContent = titleCase(source.retrieval_mode_used);
     sourceMode.dataset.tone = source.retrieval_mode_used || "tfidf";
-    card.querySelector(".source-tfidf").textContent = `TF-IDF ${formatScore(source.score_tfidf)}`;
-    card.querySelector(".source-embedding").textContent = `Embedding ${formatScore(source.score_embedding)}`;
-    excerpt.textContent = source.excerpt || "";
+    card.querySelector(".source-type").textContent = source.file_type || "FILE";
+    card.querySelector(".source-page").textContent = source.page_label || "";
+    card.querySelector(".source-tfidf").textContent = `TF-IDF ${source.score_tfidf_display || formatScore(source.score_tfidf)}`;
+    card.querySelector(".source-embedding").textContent =
+      `Embedding ${source.score_embedding_display || formatScore(source.score_embedding)}`;
+    card.querySelector(".source-chunk").textContent = source.chunk_id || "";
+    excerpt.innerHTML = source.excerpt_html || "";
 
     toggle.addEventListener("click", () => {
       const expanded = toggle.getAttribute("aria-expanded") === "true";

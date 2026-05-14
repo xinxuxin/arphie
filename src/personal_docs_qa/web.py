@@ -19,6 +19,7 @@ from personal_docs_qa.config import (
     is_openai_available,
 )
 from personal_docs_qa.indexer import index_folder_with_warnings, load_index
+from personal_docs_qa.source_format import source_payload
 
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -36,13 +37,6 @@ class AskRequest(BaseModel):
     top_k: int = 5
     retrieval_mode: str = "auto"
     answer_mode: str = "auto"
-
-
-def _excerpt(text: str, limit: int = 220) -> str:
-    compact = " ".join(text.split())
-    if len(compact) <= limit:
-        return compact
-    return compact[: limit - 3].rstrip() + "..."
 
 
 def _safe_upload_path(file_name: str) -> Path:
@@ -185,14 +179,7 @@ def create_app() -> FastAPI:
             "warnings": answer.warnings,
             "sources": [
                 {
-                    "rank": source.rank,
-                    "score": source.score,
-                    "score_tfidf": source.score_tfidf,
-                    "score_embedding": source.score_embedding,
-                    "retrieval_mode_used": source.retrieval_mode_used,
-                    "file_name": source.chunk.file_name,
-                    "chunk_id": source.chunk.id,
-                    "excerpt": _excerpt(source.chunk.text),
+                    **source_payload(source, query=request.question),
                 }
                 for source in answer.sources
             ],
