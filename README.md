@@ -1,89 +1,169 @@
 # Personal Docs QA
 
-A small take-home project for asking natural-language questions over a local folder of personal documents.
+## Project Overview
 
-This repository is intentionally modest: one shared Python core powers both a CLI and a lightweight FastAPI web demo.
+Personal Docs QA is a local document question-answering app for small folders of personal documents. It supports both a Typer CLI and a lightweight FastAPI web app.
 
-## Goals
+Users can index Markdown, plain text, and text-based PDF documents, then ask natural-language questions over the indexed content. The app retrieves relevant source chunks with TF-IDF and returns conservative extractive answers with visible citations back to the retrieved chunks.
 
-- Load `.md`, `.txt`, and `.pdf` documents from a folder
-- Chunk documents into searchable passages
-- Build a local TF-IDF index
-- Retrieve relevant chunks for a question
-- Return concise answers with visible source citations
-- Offer both a CLI and a web app using one shared engine
-- Run locally with no API key by default
+The default path is fully local. No API key, external model, hosted database, or cloud service is required.
 
-## Quick Start
+## Why Both CLI And Web
+
+The CLI is the most reliable interface: it is scriptable, fast to test, and easy to use in automated checks. It also exposes the core workflow clearly: ingest documents, search, ask questions, and run a demo.
+
+The web app is easier to demo and inspect. It lets a reviewer index a local folder or upload files, ask a question, and see the answer plus source snippets in a browser.
+
+Both interfaces share the same core engine. Loading, chunking, indexing, retrieval, and answer generation live in `src/personal_docs_qa/`; the CLI and web app are thin wrappers around that shared code.
+
+## Quickstart
 
 ```bash
+git clone https://github.com/xinxuxin/arphie.git personal-docs-qa
+cd personal-docs-qa
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
-docqa --help
+docqa ingest sample_docs
+docqa ask "What ingredients are used in the coconut latte?"
 docqa web
 ```
 
-The CLI and web app use the same local document QA engine. No API key is required by default.
+## Web App Usage
 
-## Project Structure
-
-```text
-.
-├── README.md
-├── PROCESS.md
-├── pyproject.toml
-├── sample_docs/
-├── eval/
-├── tests/
-└── src/
-    └── personal_docs_qa/
-        ├── __init__.py
-        ├── models.py
-        ├── loaders.py
-        ├── chunker.py
-        ├── indexer.py
-        ├── retriever.py
-        ├── answerer.py
-        ├── cli.py
-        ├── web.py
-        └── static/
-            ├── index.html
-            ├── app.js
-            └── styles.css
-```
-
-## Current CLI
+Start the local web server:
 
 ```bash
-docqa --help
-docqa ingest sample_docs
-docqa ask "What is the inspection date?"
 docqa web
+```
+
+Open [http://localhost:8000](http://localhost:8000). From the UI, index `sample_docs` or upload files, ask a question, and review the answer sources. The web backend saves its local index to `.docqa/web_index.joblib`.
+
+This web app is intentionally small: static HTML/CSS/JS served by FastAPI, with JSON endpoints for ingesting, uploading, and asking questions.
+
+## CLI Usage
+
+```bash
+docqa ingest sample_docs
+```
+
+Loads supported documents, chunks them, builds a local TF-IDF index, and saves it to `.docqa/index.joblib`.
+
+```bash
+docqa ask "What is the inspection date?"
+```
+
+Loads the saved index and prints a concise cited answer with source snippets.
+
+```bash
+docqa search "inspection date"
+```
+
+Prints the top retrieved chunks with rank, score, file name, and excerpt.
+
+```bash
 docqa demo
 ```
 
-## Sample Documents
-
-The `sample_docs/` folder contains small Markdown and text documents for demos. They support questions about lease inspection notes, coconut latte recipes, project risks, and AI tool usage.
-
-PDF loading is supported through `pypdf`. This repo does not include a checked-in PDF fixture, but tests can create temporary PDF inputs where needed.
-
-## Development
+Indexes `sample_docs` and runs a few example questions.
 
 ```bash
-pip install -e .
-pytest
-python eval/run_eval.py
+docqa web
 ```
 
-The tests cover the core loading, chunking, indexing, retrieval, answer, CLI, and web API behavior.
+Starts the FastAPI web app on `localhost:8000`.
 
-## Non-Goals
+## Architecture
 
-- Authentication
-- Cloud deployment
-- Database storage
-- OCR
-- Complex frontend framework
-- External LLM or embedding API requirement
+```text
+Documents
+  ↓
+Loaders (.txt / .md / .pdf)
+  ↓
+Chunker
+  ↓
+TF-IDF Index
+  ↓
+Retriever
+  ↓
+Answerer with citations
+  ↓
+CLI + Web UI
+```
+
+The important design choice is that both user interfaces call the same modules:
+
+- `loaders.py` reads supported files and returns normalized `Document` objects.
+- `chunker.py` creates paragraph-aware chunks with overlap.
+- `indexer.py` builds and persists the TF-IDF index with `joblib`.
+- `retriever.py` searches the matrix with cosine similarity.
+- `answerer.py` builds conservative extractive answers from retrieved chunks.
+
+## Retrieval Choice
+
+I chose TF-IDF because it is local, deterministic, dependency-light, and fast. For the expected take-home size of about 20 documents and 50,000 words, it is more than adequate and keeps the system easy to reason about.
+
+TF-IDF also avoids requiring API keys. A reviewer can clone the repo, install dependencies, and run the app without configuring credentials.
+
+The main weakness is that TF-IDF is lexical, not semantic. It can miss paraphrases or questions that use very different wording from the documents. The app surfaces weak matches through low confidence and warnings rather than pretending the answer is stronger than the evidence.
+
+## What I Built
+
+- CLI with `ingest`, `ask`, `search`, `demo`, and `web`
+- FastAPI web backend and static demo UI
+- TXT, Markdown, and PDF loading
+- Paragraph-aware chunking with overlap
+- Local TF-IDF retrieval
+- Extractive answers with visible citations
+- Local index persistence with `joblib`
+- Lightweight eval harness
+- Focused pytest coverage
+
+## Edge Cases Handled
+
+- Empty files are skipped with warnings
+- Unsupported file types are ignored
+- Missing index produces a helpful error
+- Weak matches produce cautious answers and warnings
+- Unreadable files do not crash the whole ingest
+- Malformed PDFs do not crash the whole ingest
+- Duplicate file names in different folders keep distinct paths and IDs
+- No API key is required
+
+## What I Skipped And Why
+
+- OCR for scanned PDFs: valuable, but too much scope for a compact take-home
+- Authentication: unnecessary for a local demo
+- Database storage: `joblib` persistence is simpler and sufficient here
+- Cloud deployment: not needed for the assignment goals
+- Advanced semantic embeddings: better recall, but more dependencies and often API setup
+- Production-grade LLM answer synthesis: I prioritized reliable citations and avoiding hallucination
+
+## What I Would Do With 4 More Hours
+
+- Hybrid BM25 plus embeddings retrieval
+- Optional LLM synthesis with strict citation grounding
+- Better PDF page-level citations in answers and UI
+- Incremental indexing for changed files
+- Persistent multi-index support
+- Richer regression eval with expected answer checks
+- Drag-and-drop folder UX improvements
+
+## Weakest Part
+
+Answer synthesis is conservative and extractive. That makes it safer and easier to inspect, but less fluent than a full LLM answer.
+
+TF-IDF is not truly semantic, so paraphrased questions can be missed.
+
+PDF support is limited to text-based PDFs via `pypdf`; scanned PDFs require OCR, which is intentionally out of scope.
+
+## Evaluation
+
+I used four layers of validation:
+
+- `pytest` for loaders, chunking, indexing, retrieval, answer behavior, CLI, and web API routes
+- `python eval/run_eval.py` as a lightweight regression harness over `sample_docs`
+- Manual CLI checks such as `docqa ingest sample_docs`, `docqa ask ...`, and `docqa search ...`
+- Manual web demo check via `docqa web` and `/api/health`
+
+The eval harness is not a benchmark. It is a small sanity check that expected sources appear in retrieved results and expected terms appear in the answer or source excerpts.
