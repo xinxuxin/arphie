@@ -63,5 +63,41 @@ def test_broken_folder_path_handled_cleanly(tmp_path: Path) -> None:
     assert warnings == [f"Folder not found: {missing}"]
 
 
+def test_empty_folder_returns_no_documents_or_warnings(tmp_path: Path) -> None:
+    documents, warnings = load_folder(tmp_path)
+
+    assert documents == []
+    assert warnings == []
+
+
+def test_duplicate_file_names_in_different_subfolders_keep_distinct_paths(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "note.txt").write_text("first note", encoding="utf-8")
+    (second / "note.txt").write_text("second note", encoding="utf-8")
+
+    documents, warnings = load_folder(tmp_path)
+
+    assert warnings == []
+    assert len(documents) == 2
+    assert [document.file_name for document in documents] == ["note.txt", "note.txt"]
+    assert len({document.path for document in documents}) == 2
+    assert len({document.id for document in documents}) == 2
+
+
+def test_malformed_pdf_warns_and_does_not_stop_ingest(tmp_path: Path) -> None:
+    (tmp_path / "broken.pdf").write_bytes(b"this is not a real pdf")
+    (tmp_path / "note.txt").write_text("valid text survives", encoding="utf-8")
+
+    documents, warnings = load_folder(tmp_path)
+
+    assert [document.file_name for document in documents] == ["note.txt"]
+    assert len(warnings) == 1
+    assert "Failed to load" in warnings[0]
+    assert "broken.pdf" in warnings[0]
+
+
 def test_make_chunk_id_is_stable_and_readable() -> None:
     assert make_chunk_id("doc-abc", 3) == "doc-abc-chunk-0003"

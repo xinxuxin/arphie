@@ -43,6 +43,16 @@ def test_answer_does_not_crash_with_no_index() -> None:
     assert answer.sources == []
 
 
+def test_unrelated_question_does_not_invent_answer() -> None:
+    index = build_index([make_chunk("The lease inspection is on Tuesday.", "lease.txt", 1)])
+
+    answer = answer_question(index, "Which telescope should I buy?")
+
+    assert answer.confidence == "low"
+    assert answer.answer.startswith("I found related passages")
+    assert "telescope" not in answer.answer.lower()
+
+
 def test_citations_come_from_retrieved_chunks() -> None:
     chunk = make_chunk("Bring a passport and printed itinerary for the trip.", "travel.md", 1)
     index = build_index([chunk])

@@ -75,6 +75,7 @@ PDF loading is supported through `pypdf`. This repo does not include a checked-i
 ```bash
 pip install -e .
 pytest
+python eval/run_eval.py
 ```
 
 The tests cover the core loading, chunking, indexing, retrieval, answer, CLI, and web API behavior.

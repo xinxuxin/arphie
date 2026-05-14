@@ -50,6 +50,18 @@ def test_empty_chunk_list_handled_cleanly() -> None:
         build_index([])
 
 
+def test_empty_folder_cannot_be_indexed(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="no chunks were produced"):
+        index_folder(tmp_path, index_path=tmp_path / ".docqa" / "index.joblib")
+
+
+def test_missing_index_path_raises_clear_error(tmp_path: Path) -> None:
+    missing = tmp_path / ".docqa" / "missing.joblib"
+
+    with pytest.raises(FileNotFoundError, match="Index not found"):
+        load_index(missing)
+
+
 def test_index_folder_saves_default_shape(tmp_path: Path) -> None:
     docs = tmp_path / "docs"
     docs.mkdir()

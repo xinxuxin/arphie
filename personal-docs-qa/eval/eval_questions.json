@@ -1,0 +1,17 @@
+[
+  {
+    "question": "What is the inspection date?",
+    "expected_source": "lease_notes.md",
+    "expected_terms": ["inspection", "date"]
+  },
+  {
+    "question": "What ingredients are used in the coconut latte?",
+    "expected_source": "coffee_recipe.txt",
+    "expected_terms": ["coconut", "milk", "espresso"]
+  },
+  {
+    "question": "What are the main project risks?",
+    "expected_source": "project_notes.md",
+    "expected_terms": ["risk", "retrieval"]
+  }
+]
