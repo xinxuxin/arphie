@@ -148,9 +148,10 @@ def demo() -> None:
         console.print(f"[yellow]- {warning}[/yellow]")
 
     questions = [
-        "What is the grocery budget?",
-        "What documents should I bring for travel?",
-        "What is the project decision?",
+        "What is the inspection date?",
+        "What ingredients are used in the coconut latte?",
+        "What are the main project risks?",
+        "How were AI tools used?",
     ]
     for question in questions:
         answer = answer_question(index, question, top_k=3)

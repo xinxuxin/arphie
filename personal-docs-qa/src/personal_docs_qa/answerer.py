@@ -129,8 +129,9 @@ def answer_question(index: LocalIndex | None, question: str, top_k: int = 5) -> 
 
     confidence = _confidence(results)
     warnings: list[str] = []
+    useful_results = [result for result in results if result.score >= LOW_CONFIDENCE_THRESHOLD]
     positive_results = [result for result in results if result.score > 0]
-    evidence_results = positive_results or results
+    evidence_results = useful_results or positive_results or results
     answer_sentences = _extract_sentences(evidence_results, question)
 
     if confidence == "low":

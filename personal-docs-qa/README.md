@@ -25,7 +25,7 @@ docqa --help
 docqa web
 ```
 
-The web command currently starts a placeholder FastAPI app. Full document loading, indexing, retrieval, and answer generation will be implemented in later phases.
+The CLI and web app use the same local document QA engine. No API key is required by default.
 
 ## Project Structure
 
@@ -58,8 +58,17 @@ personal-docs-qa/
 
 ```bash
 docqa --help
+docqa ingest sample_docs
+docqa ask "What is the inspection date?"
 docqa web
+docqa demo
 ```
+
+## Sample Documents
+
+The `sample_docs/` folder contains small Markdown and text documents for demos. They support questions about lease inspection notes, coconut latte recipes, project risks, and AI tool usage.
+
+PDF loading is supported through `pypdf`. This repo does not include a checked-in PDF fixture, but tests can create temporary PDF inputs where needed.
 
 ## Development
 
@@ -68,7 +77,7 @@ pip install -e .
 pytest
 ```
 
-The current tests only verify that the scaffold imports and the web app exists. They will expand as the shared core engine is implemented.
+The tests cover the core loading, chunking, indexing, retrieval, answer, CLI, and web API behavior.
 
 ## Non-Goals
 
@@ -78,4 +87,3 @@ The current tests only verify that the scaffold imports and the web app exists. 
 - OCR
 - Complex frontend framework
 - External LLM or embedding API requirement
-
