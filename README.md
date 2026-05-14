@@ -2,7 +2,7 @@
 
 A small take-home project for asking natural-language questions over a local folder of personal documents.
 
-This repository is intentionally modest: one shared Python core will power both a CLI and a lightweight FastAPI web demo. The first phase contains the project scaffold, dependency setup, placeholder interfaces, and documentation shape.
+This repository is intentionally modest: one shared Python core powers both a CLI and a lightweight FastAPI web demo.
 
 ## Goals
 
@@ -17,7 +17,6 @@ This repository is intentionally modest: one shared Python core will power both 
 ## Quick Start
 
 ```bash
-cd personal-docs-qa
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -30,7 +29,7 @@ The CLI and web app use the same local document QA engine. No API key is require
 ## Project Structure
 
 ```text
-personal-docs-qa/
+.
 ├── README.md
 ├── PROCESS.md
 ├── pyproject.toml
