@@ -154,7 +154,7 @@ def _resolve_answer_mode(answer_mode: str) -> tuple[str, bool, list[str]]:
             return "local", True, [
                 "OpenAI answer synthesis is not implemented yet; using local extractive answerer."
             ]
-        return "local", False, []
+        return "local", True, ["OPENAI_API_KEY is not set; using local extractive answerer."]
     return "local", True, [f"Unknown answer mode '{requested}', using local extractive answerer."]
 
 

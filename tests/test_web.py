@@ -22,7 +22,8 @@ def test_health() -> None:
     assert health() == {"status": "ok"}
 
 
-def test_config() -> None:
+def test_config(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
     config = get_endpoint("/api/config", "GET")
 
     body = config()
@@ -32,6 +33,9 @@ def test_config() -> None:
     assert body["default_retrieval_mode"] == "auto"
     assert body["default_answer_mode"] == "auto"
     assert body["embedding_model"] == "text-embedding-3-small"
+    assert body["index_present"] is False
+    assert body["index_built_with_embeddings"] is False
+    assert body["index_retrieval_mode_built"] is None
     assert "api" not in body
 
 
@@ -70,6 +74,7 @@ def test_ingest_path_and_ask(tmp_path: Path, monkeypatch) -> None:
     assert ask_response["retrieval_fallback_used"] is True
     assert ask_response["answer_mode_requested"] == "auto"
     assert ask_response["answer_mode_used"] == "local"
+    assert ask_response["answer_fallback_used"] is True
     assert "budget.txt" in ask_response["answer"]
     assert ask_response["sources"][0]["file_name"] == "budget.txt"
     assert ask_response["sources"][0]["rank"] == 1

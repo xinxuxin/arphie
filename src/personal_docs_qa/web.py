@@ -70,6 +70,16 @@ def create_app() -> FastAPI:
 
     @app.get("/api/config")
     def config() -> dict:
+        index_present = WEB_INDEX_PATH.exists()
+        index_built_with_embeddings = False
+        index_retrieval_mode_built = None
+        if index_present:
+            try:
+                current_index = load_index(WEB_INDEX_PATH)
+                index_built_with_embeddings = current_index.chunk_embeddings is not None
+                index_retrieval_mode_built = current_index.retrieval_mode_built
+            except Exception:
+                index_present = False
         return {
             "openai_available": is_openai_available(),
             "supported_retrieval_modes": ["auto", "tfidf", "embedding", "hybrid"],
@@ -77,6 +87,9 @@ def create_app() -> FastAPI:
             "default_retrieval_mode": get_default_retrieval_mode(),
             "default_answer_mode": get_default_answer_mode(),
             "embedding_model": get_embedding_model(),
+            "index_present": index_present,
+            "index_built_with_embeddings": index_built_with_embeddings,
+            "index_retrieval_mode_built": index_retrieval_mode_built,
         }
 
     @app.post("/api/ingest-path")

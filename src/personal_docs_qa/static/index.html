@@ -8,23 +8,157 @@
   </head>
   <body>
     <main class="shell">
-      <section class="panel">
-        <p class="eyebrow">Local document search</p>
-        <h1>Personal Docs QA</h1>
-        <p class="lede">
-          Placeholder web app for a small document QA system. The shared core engine will be wired in next.
-        </p>
-        <form class="question-form">
-          <label for="question">Question</label>
-          <div class="question-row">
-            <input id="question" name="question" type="text" placeholder="What did I write about the trip budget?">
-            <button type="submit">Ask</button>
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Local document QA</p>
+          <h1>Personal Docs QA</h1>
+          <p class="lede">
+            Index Markdown, text, and PDF files locally, then ask cited questions with
+            configurable retrieval and answer modes.
+          </p>
+        </div>
+        <div class="status-grid" aria-label="Configuration status">
+          <div class="status-item">
+            <span>OpenAI</span>
+            <strong id="openai-status">Checking</strong>
           </div>
+          <div class="status-item">
+            <span>Embedding model</span>
+            <strong id="embedding-model">Checking</strong>
+          </div>
+          <div class="status-item">
+            <span>Index embeddings</span>
+            <strong id="index-embeddings">Not indexed</strong>
+          </div>
+        </div>
+      </header>
+
+      <section id="global-warning" class="notice hidden" role="status"></section>
+
+      <section class="workspace" aria-label="Document indexing and question answering">
+        <form id="index-form" class="tool-panel">
+          <div class="section-heading">
+            <p class="eyebrow">Step 1</p>
+            <h2>Build an Index</h2>
+          </div>
+          <label for="folder-path">Folder path</label>
+          <div class="inline-row">
+            <input id="folder-path" name="folder_path" type="text" value="sample_docs">
+            <button type="submit">Index Path</button>
+          </div>
+
+          <label for="file-upload">Or upload files</label>
+          <div class="inline-row">
+            <input id="file-upload" name="files" type="file" multiple>
+            <button id="upload-button" type="button">Upload + Index</button>
+          </div>
+
+          <label for="index-retrieval-mode">Retrieval Mode</label>
+          <select id="index-retrieval-mode" name="retrieval_mode">
+            <option value="auto">Auto - Hybrid if OpenAI is available, otherwise TF-IDF</option>
+            <option value="tfidf">TF-IDF - Local keyword retrieval</option>
+            <option value="embedding">Embeddings - OpenAI semantic retrieval</option>
+            <option value="hybrid">Hybrid - TF-IDF + embeddings</option>
+          </select>
+
+          <div id="index-summary" class="summary">No index has been built in this session.</div>
         </form>
-        <output id="answer" class="answer">Indexing and QA are not implemented yet.</output>
+
+        <form id="ask-form" class="tool-panel">
+          <div class="section-heading">
+            <p class="eyebrow">Step 2</p>
+            <h2>Ask a Question</h2>
+          </div>
+
+          <label for="question">Question</label>
+          <textarea id="question" name="question" rows="4" placeholder="What ingredients are used in the coconut latte?"></textarea>
+
+          <div class="mode-grid">
+            <div>
+              <label for="ask-retrieval-mode">Retrieval Mode</label>
+              <select id="ask-retrieval-mode" name="retrieval_mode">
+                <option value="auto">Auto - Hybrid if OpenAI is available, otherwise TF-IDF</option>
+                <option value="tfidf">TF-IDF - Local keyword retrieval</option>
+                <option value="embedding">Embeddings - OpenAI semantic retrieval</option>
+                <option value="hybrid">Hybrid - TF-IDF + embeddings</option>
+              </select>
+            </div>
+            <div>
+              <label for="answer-mode">Answer Mode</label>
+              <select id="answer-mode" name="answer_mode">
+                <option value="auto">Auto - OpenAI synthesis first, local fallback</option>
+                <option value="openai">OpenAI - Grounded synthesis only</option>
+                <option value="local">Local - Extractive local answer</option>
+              </select>
+            </div>
+          </div>
+
+          <button type="submit">Ask</button>
+        </form>
+      </section>
+
+      <section class="pipeline-section">
+        <div class="section-heading">
+          <p class="eyebrow">Pipeline</p>
+          <h2>What Is Running</h2>
+        </div>
+        <div class="pipeline" aria-label="Indexing pipeline">
+          <div class="pipeline-step" data-step="load"><span>1</span>Load documents</div>
+          <div class="pipeline-step" data-step="chunk"><span>2</span>Chunk</div>
+          <div class="pipeline-step" data-step="tfidf"><span>3</span>Build TF-IDF</div>
+          <div class="pipeline-step" data-step="embeddings"><span>4</span>Create embeddings</div>
+          <div class="pipeline-step" data-step="retrieve"><span>5</span>Retrieve</div>
+          <div class="pipeline-step" data-step="answer"><span>6</span>Synthesize answer</div>
+        </div>
+        <div class="query-flow" aria-label="Question pipeline">
+          <div class="flow-step" data-flow="query">Query</div>
+          <div class="flow-step" data-flow="retrieval">Retrieval</div>
+          <div class="flow-step" data-flow="synthesis">Answer synthesis</div>
+          <div class="flow-step" data-flow="sources">Sources</div>
+        </div>
+      </section>
+
+      <section id="answer-section" class="answer-section hidden" aria-live="polite">
+        <div class="answer-header">
+          <div>
+            <p class="eyebrow">Answer</p>
+            <h2 id="answer-title">Result</h2>
+          </div>
+          <div class="badge-row">
+            <span id="retrieval-badge" class="badge">Retrieval</span>
+            <span id="answer-badge" class="badge">Answer</span>
+            <span id="confidence-badge" class="badge">Confidence</span>
+          </div>
+        </div>
+
+        <div id="fallback-summary" class="fallback-summary hidden"></div>
+        <div id="answer-text" class="answer-text"></div>
+        <div id="warnings" class="warnings hidden"></div>
+
+        <div class="sources-heading">
+          <h3>Sources</h3>
+          <span id="source-count">0 sources</span>
+        </div>
+        <div id="sources" class="sources"></div>
       </section>
     </main>
+
+    <template id="source-template">
+      <article class="source-card">
+        <button class="source-toggle" type="button" aria-expanded="false">
+          <span class="source-rank"></span>
+          <span class="source-file"></span>
+          <span class="source-score"></span>
+        </button>
+        <div class="source-meta">
+          <span class="source-mode badge small"></span>
+          <span class="source-tfidf"></span>
+          <span class="source-embedding"></span>
+        </div>
+        <p class="source-excerpt collapsed"></p>
+      </article>
+    </template>
+
     <script src="/static/app.js"></script>
   </body>
 </html>
-
