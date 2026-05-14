@@ -28,6 +28,14 @@ class LocalIndex:
     chunk_count: int
 
 
+@dataclass
+class IndexingResult:
+    """Result of loading, chunking, indexing, and saving documents."""
+
+    index: LocalIndex
+    warnings: list[str]
+
+
 def build_index(chunks: list[Chunk]) -> LocalIndex:
     """Build a local searchable TF-IDF index from chunks."""
     usable_chunks = [chunk for chunk in chunks if chunk.text.strip()]
@@ -68,6 +76,14 @@ def index_folder(
     index_path: str | Path = DEFAULT_INDEX_PATH,
 ) -> LocalIndex:
     """Load, chunk, index, and persist a folder of supported documents."""
+    return index_folder_with_warnings(folder_path, index_path=index_path).index
+
+
+def index_folder_with_warnings(
+    folder_path: str | Path,
+    index_path: str | Path = DEFAULT_INDEX_PATH,
+) -> IndexingResult:
+    """Load, chunk, index, persist, and return non-fatal loading warnings."""
     documents, warnings = load_folder(folder_path)
     chunks = chunk_documents(documents)
     if not chunks:
@@ -76,4 +92,4 @@ def index_folder(
 
     index = build_index(chunks)
     save_index(index, index_path)
-    return index
+    return IndexingResult(index=index, warnings=warnings)

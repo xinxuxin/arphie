@@ -9,9 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from personal_docs_qa.answerer import answer_question
-from personal_docs_qa.chunker import chunk_documents
-from personal_docs_qa.indexer import DEFAULT_INDEX_PATH, build_index, load_index, save_index
-from personal_docs_qa.loaders import load_folder
+from personal_docs_qa.indexer import DEFAULT_INDEX_PATH, index_folder_with_warnings, load_index
 from personal_docs_qa.retriever import search
 
 
@@ -66,29 +64,20 @@ def ingest(
     index_path: Path = typer.Option(DEFAULT_INDEX_PATH, help="Where to save the local index."),
 ) -> None:
     """Load documents, chunk them, and build a local TF-IDF index."""
-    documents, warnings = load_folder(folder)
-    chunks = chunk_documents(documents)
-
-    if not chunks:
-        console.print("[red]No chunks were produced; index was not created.[/red]")
-        for warning in warnings:
-            console.print(f"[yellow]- {warning}[/yellow]")
-        raise typer.Exit(code=1)
-
     try:
-        index = build_index(chunks)
-        save_index(index, index_path)
+        result = index_folder_with_warnings(folder, index_path=index_path)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
 
+    index = result.index
     console.print(Panel.fit("Index built successfully", style="green"))
-    console.print(f"Documents loaded: [bold]{len(documents)}[/bold]")
+    console.print(f"Documents loaded: [bold]{index.document_count}[/bold]")
     console.print(f"Chunks indexed: [bold]{index.chunk_count}[/bold]")
     console.print(f"Index path: [bold]{index_path}[/bold]")
-    if warnings:
+    if result.warnings:
         console.print("[yellow]Warnings:[/yellow]")
-        for warning in warnings:
+        for warning in result.warnings:
             console.print(f"[yellow]- {warning}[/yellow]")
 
 
@@ -146,16 +135,16 @@ def demo() -> None:
     sample_folder = Path(__file__).resolve().parents[2] / "sample_docs"
     console.print(f"[bold]Ingesting sample docs from {sample_folder}[/bold]")
 
-    documents, warnings = load_folder(sample_folder)
-    chunks = chunk_documents(documents)
-    if not chunks:
+    try:
+        result = index_folder_with_warnings(sample_folder, index_path=DEFAULT_INDEX_PATH)
+    except ValueError as exc:
         console.print("[red]No sample chunks were produced.[/red]")
-        raise typer.Exit(code=1)
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
 
-    index = build_index(chunks)
-    save_index(index, DEFAULT_INDEX_PATH)
-    console.print(f"[green]Indexed {len(documents)} documents into {index.chunk_count} chunks.[/green]")
-    for warning in warnings:
+    index = result.index
+    console.print(f"[green]Indexed {index.document_count} documents into {index.chunk_count} chunks.[/green]")
+    for warning in result.warnings:
         console.print(f"[yellow]- {warning}[/yellow]")
 
     questions = [
