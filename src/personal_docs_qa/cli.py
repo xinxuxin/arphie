@@ -82,7 +82,7 @@ def ingest(
     console.print(Panel.fit("Index built successfully", style="green"))
     console.print(f"Documents loaded: [bold]{index.document_count}[/bold]")
     console.print(f"Chunks indexed: [bold]{index.chunk_count}[/bold]")
-    console.print(f"Retrieval mode: [bold]{index.retrieval_mode}[/bold]")
+    console.print(f"Retrieval mode: [bold]{index.retrieval_mode_built}[/bold]")
     console.print(f"Index path: [bold]{index_path}[/bold]")
     if result.warnings:
         console.print("[yellow]Warnings:[/yellow]")

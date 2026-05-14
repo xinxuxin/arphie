@@ -4,7 +4,7 @@ import numpy as np
 from personal_docs_qa.indexer import build_index
 from personal_docs_qa.models import Chunk
 from personal_docs_qa import retriever
-from personal_docs_qa.retriever import search
+from personal_docs_qa.retriever import search, search_embedding, search_hybrid, search_tfidf
 
 
 def make_chunk(text: str, index: int) -> Chunk:
@@ -27,10 +27,11 @@ def test_relevant_chunk_ranks_above_irrelevant_chunk() -> None:
     ]
     index = build_index(chunks)
 
-    results = search(index, "beach hotel", top_k=2)
+    results = search_tfidf(index, "beach hotel", top_k=2)
 
     assert results[0].chunk == chunks[0]
     assert results[0].score > results[1].score
+    assert results[0].retrieval_mode_used == "tfidf"
 
 
 def test_top_k_respected() -> None:
@@ -68,6 +69,61 @@ def test_embedding_search_uses_existing_chunks(monkeypatch) -> None:
     index.embedding_dimensions = 512
     monkeypatch.setattr(retriever, "embed_query", lambda *args, **kwargs: [0.0, 1.0])
 
-    results = search(index, "semantic beta", top_k=1)
+    results = search_embedding(index, "semantic beta", top_k=1)
 
     assert results[0].chunk == chunks[1]
+    assert results[0].score_embedding is not None
+    assert results[0].retrieval_mode_used == "embedding"
+
+
+def test_hybrid_combines_scores(monkeypatch) -> None:
+    chunks = [make_chunk("apple exact", 1), make_chunk("banana semantic", 2)]
+    index = build_index(chunks)
+    index.chunk_embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
+    index.embedding_matrix = index.chunk_embeddings
+    monkeypatch.setattr(retriever, "embed_query", lambda *args, **kwargs: [0.0, 1.0])
+
+    results = search_hybrid(index, "apple", top_k=2, tfidf_weight=0.2, embedding_weight=0.8)
+
+    assert results[0].chunk == chunks[1]
+    assert results[0].score_tfidf is not None
+    assert results[0].score_embedding is not None
+    assert results[0].retrieval_mode_used == "hybrid"
+
+
+def test_auto_fallback_works_when_no_embeddings_exist(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    chunks = [make_chunk("inspection date", 1), make_chunk("coffee recipe", 2)]
+    index = build_index(chunks, retrieval_mode="tfidf")
+
+    results = search(index, "inspection", retrieval_mode="auto")
+
+    assert results[0].chunk == chunks[0]
+    assert results[0].retrieval_mode_used == "tfidf"
+
+
+def test_embedding_mode_without_embeddings_has_helpful_error() -> None:
+    index = build_index([make_chunk("plain tfidf", 1)], retrieval_mode="tfidf")
+
+    with pytest.raises(ValueError, match="built without embeddings"):
+        search_embedding(index, "semantic")
+
+
+def test_auto_query_embedding_failure_falls_back_to_tfidf(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    chunks = [make_chunk("inspection date", 1), make_chunk("coffee recipe", 2)]
+    index = build_index(chunks, retrieval_mode="tfidf")
+    index.chunk_embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
+    index.embedding_matrix = index.chunk_embeddings
+
+    def fail_query(*args, **kwargs):
+        from personal_docs_qa.openai_embeddings import OpenAIEmbeddingError
+
+        raise OpenAIEmbeddingError("query embedding failed")
+
+    monkeypatch.setattr(retriever, "embed_query", fail_query)
+
+    results = search(index, "inspection", retrieval_mode="auto")
+
+    assert results[0].chunk == chunks[0]
+    assert results[0].retrieval_mode_used == "tfidf"

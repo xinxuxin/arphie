@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from personal_docs_qa import indexer
 from personal_docs_qa.indexer import build_index, index_folder, load_index, save_index
 from personal_docs_qa.models import Chunk
 
@@ -26,10 +27,13 @@ def test_build_index_from_chunks() -> None:
 
     assert index.chunk_count == 2
     assert index.document_count == 2
+    assert index.tfidf_matrix.shape[0] == 2
     assert index.matrix.shape[0] == 2
     assert index.chunks == chunks
     assert index.created_at
     assert index.retrieval_mode == "tfidf"
+    assert index.retrieval_mode_built == "tfidf"
+    assert index.chunk_embeddings is None
 
 
 def test_save_and_load_index_preserves_chunks(tmp_path: Path) -> None:
@@ -44,6 +48,7 @@ def test_save_and_load_index_preserves_chunks(tmp_path: Path) -> None:
     assert loaded.document_count == 1
     assert loaded.chunks == chunks
     assert loaded.matrix.shape == index.matrix.shape
+    assert loaded.tfidf_matrix.shape == index.tfidf_matrix.shape
 
 
 def test_empty_chunk_list_handled_cleanly() -> None:
@@ -57,7 +62,8 @@ def test_auto_mode_falls_back_to_tfidf_without_key(monkeypatch) -> None:
     index = build_index([make_chunk("local search only")], retrieval_mode="auto")
 
     assert index.retrieval_mode == "tfidf"
-    assert index.embedding_matrix is None
+    assert index.retrieval_mode_built == "tfidf"
+    assert index.chunk_embeddings is None
     assert index.warnings
 
 
@@ -66,6 +72,55 @@ def test_embedding_mode_requires_openai_key(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):
         build_index([make_chunk("semantic search")], retrieval_mode="embedding")
+
+
+def test_auto_mode_embedding_failure_falls_back_to_tfidf(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    def fail_embed(*args, **kwargs):
+        from personal_docs_qa.openai_embeddings import OpenAIEmbeddingError
+
+        raise OpenAIEmbeddingError("temporary embedding outage")
+
+    monkeypatch.setattr(indexer, "embed_texts", fail_embed)
+
+    index = build_index([make_chunk("local fallback")], retrieval_mode="auto")
+
+    assert index.retrieval_mode_built == "tfidf"
+    assert index.chunk_embeddings is None
+    assert "Embedding generation failed in auto mode" in index.warnings[0]
+
+
+def test_mocked_embedding_mode_stores_embeddings(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(indexer, "embed_texts", lambda texts, **kwargs: [[1.0, 0.0], [0.0, 1.0]])
+    chunks = [make_chunk("alpha", index=1), make_chunk("beta", index=2)]
+
+    index = build_index(chunks, retrieval_mode="embedding")
+
+    assert index.retrieval_mode_built == "embedding"
+    assert index.chunk_embeddings is not None
+    assert index.chunk_embeddings.tolist() == [[1.0, 0.0], [0.0, 1.0]]
+    assert index.embedding_model == "text-embedding-3-small"
+    assert index.embedding_dimensions == 512
+    assert index.embedding_created_at
+
+
+def test_embedding_index_persistence_preserves_embedding_metadata(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(indexer, "embed_texts", lambda texts, **kwargs: [[1.0, 0.0]])
+    path = tmp_path / ".docqa" / "index.joblib"
+
+    index = build_index([make_chunk("alpha")], retrieval_mode="hybrid")
+    save_index(index, path)
+    loaded = load_index(path)
+
+    assert loaded.chunk_embeddings is not None
+    assert loaded.chunk_embeddings.tolist() == [[1.0, 0.0]]
+    assert loaded.embedding_model == "text-embedding-3-small"
+    assert loaded.embedding_dimensions == 512
+    assert loaded.embedding_created_at
+    assert loaded.retrieval_mode_built == "hybrid"
 
 
 def test_empty_folder_cannot_be_indexed(tmp_path: Path) -> None:

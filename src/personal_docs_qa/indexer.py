@@ -28,16 +28,28 @@ class LocalIndex:
     """A small persisted search index."""
 
     vectorizer: TfidfVectorizer
-    matrix: csr_matrix
+    tfidf_matrix: csr_matrix
     chunks: list[Chunk]
     created_at: str
     document_count: int
     chunk_count: int
-    retrieval_mode: str = "tfidf"
-    embedding_matrix: np.ndarray | None = None
+    chunk_embeddings: np.ndarray | None = None
     embedding_model: str | None = None
     embedding_dimensions: int | None = None
+    embedding_created_at: str | None = None
+    retrieval_mode_built: str = "tfidf"
     warnings: list[str] = field(default_factory=list)
+    matrix: csr_matrix | None = None
+    embedding_matrix: np.ndarray | None = None
+    retrieval_mode: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.matrix is None:
+            self.matrix = self.tfidf_matrix
+        if self.embedding_matrix is None:
+            self.embedding_matrix = self.chunk_embeddings
+        if self.retrieval_mode is None:
+            self.retrieval_mode = self.retrieval_mode_built
 
 
 @dataclass
@@ -54,13 +66,16 @@ def build_index(chunks: list[Chunk], retrieval_mode: str | None = None) -> Local
     if not usable_chunks:
         raise ValueError("Cannot build index: no non-empty chunks were provided.")
 
+    requested_mode = (retrieval_mode or "auto").strip().lower()
     resolved_mode, warnings = resolve_retrieval_mode(retrieval_mode)
     vectorizer = TfidfVectorizer(stop_words="english")
-    matrix = vectorizer.fit_transform(chunk.text for chunk in usable_chunks)
+    tfidf_matrix = vectorizer.fit_transform(chunk.text for chunk in usable_chunks)
     document_ids = {chunk.document_id for chunk in usable_chunks}
-    embedding_matrix = None
+    chunk_embeddings = None
     embedding_model = None
     embedding_dimensions = None
+    embedding_created_at = None
+    retrieval_mode_built = resolved_mode
 
     if resolved_mode in {"embedding", "hybrid"}:
         embedding_model = get_embedding_model()
@@ -72,20 +87,32 @@ def build_index(chunks: list[Chunk], retrieval_mode: str | None = None) -> Local
                 dimensions=embedding_dimensions,
             )
         except OpenAIEmbeddingError as exc:
-            raise ValueError(str(exc)) from exc
-        embedding_matrix = np.array(embeddings, dtype=float)
+            if requested_mode == "auto":
+                warnings.append(f"Embedding generation failed in auto mode; using tfidf only. {exc}")
+                embedding_model = None
+                embedding_dimensions = None
+                retrieval_mode_built = "tfidf"
+            else:
+                raise ValueError(str(exc)) from exc
+        else:
+            chunk_embeddings = np.array(embeddings, dtype=float)
+            embedding_created_at = datetime.now(timezone.utc).isoformat()
+
+    if resolved_mode in {"embedding", "hybrid"} and chunk_embeddings is None and requested_mode != "auto":
+        raise ValueError("Embedding generation failed; no embeddings were stored.")
 
     return LocalIndex(
         vectorizer=vectorizer,
-        matrix=matrix,
+        tfidf_matrix=tfidf_matrix,
         chunks=usable_chunks,
         created_at=datetime.now(timezone.utc).isoformat(),
         document_count=len(document_ids),
         chunk_count=len(usable_chunks),
-        retrieval_mode=resolved_mode,
-        embedding_matrix=embedding_matrix,
+        chunk_embeddings=chunk_embeddings,
         embedding_model=embedding_model,
         embedding_dimensions=embedding_dimensions,
+        embedding_created_at=embedding_created_at,
+        retrieval_mode_built=retrieval_mode_built,
         warnings=warnings,
     )
 
@@ -102,7 +129,28 @@ def load_index(path: str | Path = DEFAULT_INDEX_PATH) -> LocalIndex:
     index_path = Path(path)
     if not index_path.exists():
         raise FileNotFoundError(f"Index not found: {index_path}")
-    return joblib.load(index_path)
+    return normalize_index(joblib.load(index_path))
+
+
+def normalize_index(index: LocalIndex) -> LocalIndex:
+    """Populate compatibility fields for indexes saved by older versions."""
+    if not hasattr(index, "tfidf_matrix"):
+        index.tfidf_matrix = index.matrix
+    if not hasattr(index, "matrix") or index.matrix is None:
+        index.matrix = index.tfidf_matrix
+    if not hasattr(index, "chunk_embeddings"):
+        index.chunk_embeddings = getattr(index, "embedding_matrix", None)
+    if not hasattr(index, "embedding_matrix") or index.embedding_matrix is None:
+        index.embedding_matrix = index.chunk_embeddings
+    if not hasattr(index, "embedding_created_at"):
+        index.embedding_created_at = None
+    if not hasattr(index, "retrieval_mode_built"):
+        index.retrieval_mode_built = getattr(index, "retrieval_mode", "tfidf")
+    if not hasattr(index, "retrieval_mode") or index.retrieval_mode is None:
+        index.retrieval_mode = index.retrieval_mode_built
+    if not hasattr(index, "warnings"):
+        index.warnings = []
+    return index
 
 
 def index_folder(

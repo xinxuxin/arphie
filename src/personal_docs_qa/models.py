@@ -39,6 +39,9 @@ class SearchResult:
     rank: int
     score: float
     chunk: Chunk
+    score_tfidf: float | None = None
+    score_embedding: float | None = None
+    retrieval_mode_used: str = "tfidf"
 
 
 @dataclass(frozen=True)
