@@ -1,194 +1,168 @@
 # Personal Docs QA
 
-## Project Overview
+## Overview
 
-Personal Docs QA is a local document question-answering app for small folders of personal documents. It supports both a Typer CLI and a lightweight FastAPI web app.
+Personal Docs QA is a small personal document question-answering app with both a CLI and a lightweight web interface. It is designed for a folder of mixed personal documents and keeps the core indexing, retrieval, and answering logic shared between both interfaces.
 
-Users can index Markdown, plain text, and text-based PDF documents, then ask natural-language questions over the indexed content. The default no-key path retrieves relevant source chunks with TF-IDF, while optional OpenAI embedding and hybrid modes are available when an API key is configured. Answers include visible citations back to retrieved chunks.
+The app supports:
 
-The default path is fully local. No API key, external model, hosted database, or cloud service is required.
+- `.txt`, `.md`, and text-based `.pdf` files
+- Local TF-IDF retrieval
+- Optional OpenAI embedding retrieval
+- Hybrid retrieval that combines TF-IDF and embeddings
+- Answer modes for local extractive answers and OpenAI-grounded synthesis with local fallback
+- Visible citations to retrieved source chunks
 
-## Why Both CLI And Web
+It runs without API keys by default. The fresh-clone path is fully local: load documents, chunk them, build a TF-IDF index, retrieve matching chunks, and answer conservatively from the retrieved evidence.
 
-The CLI is the most reliable interface: it is scriptable, fast to test, and easy to use in automated checks. It also exposes the core workflow clearly: ingest documents, search, ask questions, and run a demo.
+Note: the OpenAI answer mode is exposed through the CLI and web metadata, but this take-home currently keeps synthesis conservative and falls back to local extractive answering. The OpenAI-enhanced path is fully implemented for embeddings and hybrid retrieval.
 
-The web app is easier to demo and inspect. It lets a reviewer index a local folder or upload files, ask a question, and see the answer plus source snippets in a browser.
-
-Both interfaces share the same core engine. Loading, chunking, indexing, retrieval, and answer generation live in `src/personal_docs_qa/`; the CLI and web app are thin wrappers around that shared code.
-
-## Quickstart
+## Quickstart: Local-Only
 
 ```bash
-git clone https://github.com/xinxuxin/arphie.git personal-docs-qa
-cd personal-docs-qa
-python -m venv .venv
-source .venv/bin/activate
 pip install -e .
-docqa ingest sample_docs
-docqa ask "What ingredients are used in the coconut latte?"
-docqa web
-```
-
-## Web App Usage
-
-Start the local web server:
-
-```bash
-docqa web
-```
-
-Open [http://localhost:8000](http://localhost:8000). From the UI, index `sample_docs` or upload files, ask a question, and review the answer sources. The web backend saves its local index to `.docqa/web_index.joblib`.
-
-This web app is intentionally small: static HTML/CSS/JS served by FastAPI, with JSON endpoints for ingesting, uploading, and asking questions.
-
-## CLI Usage
-
-```bash
-docqa ingest sample_docs
-```
-
-Loads supported documents, chunks them, builds a local index, and saves it to `.docqa/index.joblib`.
-
-```bash
 docqa ingest sample_docs --retrieval-mode tfidf
-```
-
-Forces local TF-IDF retrieval. Other modes are documented below.
-
-```bash
-docqa ask "What is the inspection date?"
-```
-
-Loads the saved index and prints a concise cited answer with source snippets.
-
-```bash
-docqa search "inspection date"
-```
-
-Prints the top retrieved chunks with rank, score, file name, and excerpt.
-
-```bash
-docqa demo
-```
-
-Indexes `sample_docs` and runs a few example questions.
-
-```bash
+docqa ask "What is the inspection date?" --retrieval-mode tfidf --answer-mode local
 docqa web
 ```
 
-Starts the FastAPI web app on `localhost:8000`.
+Then open [http://localhost:8000](http://localhost:8000).
 
-## Architecture
+## Quickstart: OpenAI-Enhanced
+
+```bash
+export OPENAI_API_KEY=...
+docqa ingest sample_docs --retrieval-mode hybrid
+docqa ask "What is the inspection date?" --retrieval-mode hybrid --answer-mode auto
+```
+
+OpenAI is optional. If the key is missing or an OpenAI request fails in `auto` mode, the app falls back to local behavior and surfaces a warning instead of crashing.
+
+## Retrieval Modes
+
+- `tfidf`: local, deterministic, keyword-based retrieval using scikit-learn TF-IDF and cosine similarity.
+- `embedding`: OpenAI semantic retrieval using stored chunk embeddings and a query embedding. Requires `OPENAI_API_KEY`.
+- `hybrid`: combines normalized TF-IDF and embedding scores, so exact terms and semantic similarity can both contribute.
+- `auto`: uses hybrid if OpenAI is available and the index has embeddings; otherwise falls back to TF-IDF.
+
+The default embedding model is `text-embedding-3-small`. The default embedding dimension is `512`, chosen to keep local indexes compact and fast for the expected take-home scale.
+
+## Answer Modes
+
+- `local`: extractive local answer built only from retrieved chunks.
+- `openai`: intended for grounded answer synthesis from retrieved chunks, with citations. In the current take-home implementation, it falls back to local extractive answering rather than inventing unsupported synthesis.
+- `auto`: tries the strongest configured answer path first, then uses local fallback when OpenAI is unavailable or synthesis is not enabled.
+
+The answer response always reports the requested mode, the mode actually used, whether fallback happened, confidence, warnings, and sources.
+
+## Why This Design
+
+TF-IDF keeps the fresh-clone experience reliable. A reviewer can install the package and run the app without credentials, network access, model downloads, or a vector database.
+
+Embeddings improve semantic matching when the question uses different wording from the documents. Hybrid retrieval handles both exact terms and paraphrases by combining lexical and semantic signals.
+
+OpenAI answer synthesis is the natural next step for fluency, but the system still treats retrieved evidence as the authority. The app is intentionally cautious: if the evidence is weak, it says so.
+
+Fallback behavior keeps the app robust. Missing API keys, OpenAI failures, old indexes without embeddings, and weak matches all produce readable warnings rather than raw stack traces.
+
+Personal documents may be sensitive, so local mode is always available. Users can choose the fully local path when privacy or reproducibility matters more than semantic retrieval.
+
+## Architecture Diagram
 
 ```text
 Documents
-  ↓
-Loaders (.txt / .md / .pdf)
-  ↓
-Chunker
-  ↓
-Search Index
-  ↓
-Retriever
-  ↓
-Answerer with citations
-  ↓
-CLI + Web UI
+  -> Loaders
+  -> Chunker
+  -> Index Builder
+      -> TF-IDF
+      -> Optional OpenAI embeddings
+  -> Retriever
+      -> TF-IDF / Embedding / Hybrid
+  -> Answerer
+      -> OpenAI synthesis / Local fallback
+  -> CLI + Web
 ```
 
-The important design choice is that both user interfaces call the same modules:
+Core modules live in `src/personal_docs_qa/`:
 
-- `loaders.py` reads supported files and returns normalized `Document` objects.
-- `chunker.py` creates paragraph-aware chunks with overlap.
-- `indexer.py` builds and persists the local search index with `joblib`.
-- `retriever.py` searches the matrix with cosine similarity.
-- `answerer.py` builds conservative extractive answers from retrieved chunks.
+- `loaders.py`: reads TXT, Markdown, and text-based PDFs.
+- `chunker.py`: creates paragraph-aware chunks with overlap.
+- `indexer.py`: builds and persists TF-IDF indexes, optionally with OpenAI embeddings.
+- `retriever.py`: runs TF-IDF, embedding, hybrid, or auto retrieval.
+- `answerer.py`: produces conservative cited answers and reports mode/fallback metadata.
+- `cli.py` and `web.py`: thin interfaces over the shared engine.
 
-## Retrieval Choice
+## Web Demo
 
-The default retrieval configuration is `auto`: if `OPENAI_API_KEY` is present, the app uses hybrid retrieval; otherwise it falls back to TF-IDF with a warning. This preserves the no-key fresh clone path while allowing an optional semantic retrieval upgrade.
+```bash
+docqa web
+```
 
-Available modes:
+Open [http://localhost:8000](http://localhost:8000), then:
 
-- `tfidf`: local TF-IDF only
-- `embedding`: OpenAI embeddings only, requires `OPENAI_API_KEY`
-- `hybrid`: combines TF-IDF and OpenAI embedding scores, requires `OPENAI_API_KEY`
-- `auto`: uses `hybrid` when an API key exists, otherwise falls back to `tfidf`
+1. Select a retrieval mode.
+2. Select an answer mode.
+3. Index `sample_docs` or upload files.
+4. Ask a question.
+5. Inspect the pipeline, answer badges, fallback warnings, confidence, and source cards.
 
-Environment variables:
-
-- `DOCQA_RETRIEVAL_MODE`
-- `OPENAI_API_KEY`
-- `OPENAI_EMBEDDING_MODEL`
-- `OPENAI_EMBEDDING_DIMENSIONS`
-
-The default embedding model is `text-embedding-3-small`. The default embedding dimension is `512`, chosen to keep persisted local indexes small and fast for this take-home scale. OpenAI's `text-embedding-3-small` can use larger dimensions, but 512 is a practical speed/storage tradeoff for about 20 documents and 50,000 words.
-
-I chose TF-IDF as the guaranteed baseline because it is local, deterministic, dependency-light, and fast. For the expected take-home size, it is more than adequate and keeps the system easy to reason about.
-
-TF-IDF also avoids requiring API keys. A reviewer can clone the repo, install dependencies, and run the app without configuring credentials.
-
-The main weakness is that TF-IDF is lexical, not semantic. It can miss paraphrases or questions that use very different wording from the documents. Embedding and hybrid modes help with that, but they are optional because they require an OpenAI API key. The app surfaces weak matches through low confidence and warnings rather than pretending the answer is stronger than the evidence.
-
-## What I Built
-
-- CLI with `ingest`, `ask`, `search`, `demo`, and `web`
-- FastAPI web backend and static demo UI
-- TXT, Markdown, and PDF loading
-- Paragraph-aware chunking with overlap
-- Local TF-IDF retrieval
-- Optional OpenAI embedding and hybrid retrieval
-- Extractive answers with visible citations
-- Local index persistence with `joblib`
-- Lightweight eval harness
-- Focused pytest coverage
+The web UI is static HTML/CSS/JS served by FastAPI. There is no React build step.
 
 ## Edge Cases Handled
 
-- Empty files are skipped with warnings
-- Unsupported file types are ignored
-- Missing index produces a helpful error
-- Weak matches produce cautious answers and warnings
-- Unreadable files do not crash the whole ingest
-- Malformed PDFs do not crash the whole ingest
-- Duplicate file names in different folders keep distinct paths and IDs
-- No API key is required
+- Missing API key
+- OpenAI API failure
+- Old index without embeddings
+- Empty files
+- Unsupported files
+- Missing index
+- Weak matches
+- Unreadable PDFs
 
 ## What I Skipped And Why
 
-- OCR for scanned PDFs: valuable, but too much scope for a compact take-home
-- Authentication: unnecessary for a local demo
-- Database storage: `joblib` persistence is simpler and sufficient here
-- Cloud deployment: not needed for the assignment goals
-- Vector database or advanced semantic retrieval pipeline: useful later, but more scope than needed here
-- Production-grade LLM answer synthesis: I prioritized reliable citations and avoiding hallucination
+- OCR for scanned PDFs: valuable, but too large for the take-home scope.
+- Production authentication: unnecessary for a local demo.
+- Cloud deployment: not required for the assignment.
+- Persistent vector DB: `joblib` is simpler and enough for this document scale.
+- Complex React frontend: static HTML/CSS/JS is faster to review and easier to run.
+- Full benchmark suite: the eval harness is a sanity check, not a production benchmark.
 
 ## What I Would Do With 4 More Hours
 
-- Hybrid BM25 plus embeddings retrieval
-- Optional LLM synthesis with strict citation grounding
-- Better PDF page-level citations in answers and UI
-- Incremental indexing for changed files
-- Persistent multi-index support
-- Richer regression eval with expected answer checks
-- Drag-and-drop folder UX improvements
+- Query rewriting
+- Reranking
+- Streaming answers
+- Better PDF page highlighting
+- Larger regression eval set
+- Per-folder index management
+- Optional local embedding model
+- Drag-and-drop folder UX
 
 ## Weakest Part
 
-Answer synthesis is conservative and extractive. That makes it safer and easier to inspect, but less fluent than a full LLM answer.
+Embedding quality depends on chunking. If chunks are too broad or too narrow, semantic retrieval can still surface imperfect evidence.
 
-TF-IDF is not truly semantic, so paraphrased questions can be missed.
+Hybrid weights are heuristic. The current weights are reasonable for a small demo, but a larger eval set should tune them.
 
-PDF support is limited to text-based PDFs via `pypdf`; scanned PDFs require OCR, which is intentionally out of scope.
+OpenAI synthesis depends on retrieved evidence. If retrieval misses the right chunk, a fluent answer would still be poorly grounded. For that reason, this version stays conservative and uses local fallback.
+
+PDF extraction only handles text-based PDFs through `pypdf`; scanned documents need OCR.
+
+The UI is demo-grade, not production-grade. It is useful for a two-minute walkthrough, but not a hardened document management product.
 
 ## Evaluation
 
-I used four layers of validation:
+Run tests:
 
-- `pytest` for loaders, chunking, indexing, retrieval, answer behavior, CLI, and web API routes
-- `python eval/run_eval.py` as a lightweight regression harness over `sample_docs`
-- Manual CLI checks such as `docqa ingest sample_docs`, `docqa ask ...`, and `docqa search ...`
-- Manual web demo check via `docqa web` and `/api/health`
+```bash
+pytest
+```
 
-The eval harness is not a benchmark. It is a small sanity check that expected sources appear in retrieved results and expected terms appear in the answer or source excerpts.
+Run the lightweight eval harness:
+
+```bash
+python eval/run_eval.py
+```
+
+The eval harness ingests `sample_docs`, checks expected sources and terms, compares TF-IDF against hybrid when OpenAI is configured, and includes a weak question to verify low-confidence behavior. It is intentionally small: its purpose is to show retrieval quality and fallback behavior beyond manual clicking, not to be a full benchmark.
