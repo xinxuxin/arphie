@@ -3,7 +3,7 @@
 ## Tools Used
 
 - ChatGPT for scoping, architecture discussion, README planning, and checking whether the project stayed inside the take-home constraints.
-- Codex for implementation scaffolding, iterative coding, refactors, tests, and repeated local verification.
+- Codex and Claude Code for implementation scaffolding, iterative coding, refactors, tests, and repeated local verification.
 - Manual review for tradeoff decisions, edge-case selection, and deciding where to keep the implementation intentionally small.
 
 ## Where AI Helped
@@ -52,7 +52,6 @@ curl http://127.0.0.1:8000/api/health
 
 ## Remaining Concerns
 
-- TF-IDF is lexical, so it can miss semantic paraphrases.
 - Scanned PDFs are unsupported because there is no OCR.
 - Source snippets are chunk-level citations, not perfect page-level citations in every answer.
 - Web upload is local demo quality, not production-grade file handling.
