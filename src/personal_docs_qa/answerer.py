@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from personal_docs_qa.config import is_openai_available
 from personal_docs_qa.indexer import LocalIndex
 from personal_docs_qa.models import Answer, SearchResult
+from personal_docs_qa.openai_answerer import OpenAIAnswerError, synthesize_answer
 from personal_docs_qa.retriever import search
 
 
@@ -159,21 +160,38 @@ def _local_answer_from_results(question: str, results: list[SearchResult], warni
     )
 
 
+def _source_results(results: list[SearchResult]) -> list[SearchResult]:
+    positive_results = [result for result in results if result.score > 0]
+    if not positive_results:
+        return []
+    top_score = positive_results[0].score
+    relative_threshold = max(LOW_CONFIDENCE_THRESHOLD, top_score * 0.5)
+    filtered = [result for result in positive_results if result.score >= relative_threshold]
+    return filtered or positive_results[:1]
+
+
+def _ensure_source_citations(answer_text: str, results: list[SearchResult]) -> str:
+    text = answer_text.strip()
+    text = re.sub(r"\s+([.,;:!?])", r"\1", text)
+    labels = [f"[{result.rank}: {result.chunk.file_name}]" for result in results]
+    for result, label in zip(results, labels):
+        text = re.sub(rf"\[{result.rank}\](?!:)", label, text)
+    if labels and not any(label in text for label in labels):
+        text = f"{text} {labels[0]}"
+    return text
+
+
 def _resolve_answer_mode(answer_mode: str) -> tuple[str, bool, list[str]]:
     requested = answer_mode or "auto"
     if requested == "local":
         return "local", False, []
     if requested == "openai":
         if is_openai_available():
-            return "local", True, [
-                "OpenAI answer synthesis is not implemented yet; using local extractive answerer."
-            ]
+            return "openai", False, []
         return "local", True, ["OPENAI_API_KEY is not set; using local extractive answerer."]
     if requested == "auto":
         if is_openai_available():
-            return "local", True, [
-                "OpenAI answer synthesis is not implemented yet; using local extractive answerer."
-            ]
+            return "openai", False, []
         return "local", True, ["OPENAI_API_KEY is not set; using local extractive answerer."]
     return "local", True, [f"Unknown answer mode '{requested}', using local extractive answerer."]
 
@@ -271,7 +289,31 @@ def answer_question_with_metadata(
         retrieval_warnings.append(
             f"Retrieval fell back from {retrieval_mode_requested} to {retrieval_mode_used}."
         )
-    answer = _local_answer_from_results(question, results, warnings=[*answer_warnings, *retrieval_warnings])
+    display_results = _source_results(results)
+    answer = _local_answer_from_results(question, display_results, warnings=[*answer_warnings, *retrieval_warnings])
+
+    if answer_mode_used == "openai":
+        if not display_results:
+            answer_mode_used = "local"
+            answer_fallback_used = True
+            answer.warnings.append("No positive-score sources were available for OpenAI synthesis.")
+        else:
+            try:
+                synthesized = synthesize_answer(question, display_results, confidence=answer.confidence)
+            except OpenAIAnswerError as exc:
+                answer_mode_used = "local"
+                answer_fallback_used = True
+                answer.warnings.append(f"{exc} Using local extractive answerer.")
+            else:
+                synthesized = _ensure_source_citations(synthesized, display_results)
+                answer = Answer(
+                    question=question,
+                    answer=synthesized,
+                    sources=display_results,
+                    warnings=answer.warnings,
+                    confidence=answer.confidence,
+                )
+
     return AnswerResult(
         answer=answer,
         retrieval_mode_requested=retrieval_mode_requested,

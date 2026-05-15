@@ -3,6 +3,7 @@ from personal_docs_qa.source_format import (
     file_type_label,
     format_score,
     highlight_query_terms_html,
+    make_excerpt,
     source_payload,
 )
 
@@ -61,3 +62,12 @@ def test_file_type_and_page_metadata_are_formatted() -> None:
     assert payload["file_type"] == "PDF"
     assert payload["page_number"] == 3
     assert payload["page_label"] == "p. 3"
+
+
+def test_excerpt_centers_on_query_term() -> None:
+    text = "Start of document. " + ("background " * 30) + "ByteDance internship details are here."
+
+    excerpt = make_excerpt(text, limit=80, query="what did you do in ByteDance")
+
+    assert "ByteDance" in excerpt
+    assert excerpt.startswith("...")

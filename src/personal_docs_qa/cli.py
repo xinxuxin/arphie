@@ -52,6 +52,11 @@ def _highlight_excerpt(excerpt: str, query: str, retrieval_mode: str) -> Text:
 
 
 def _print_sources(results, query: str = "") -> None:
+    results = [result for result in results if result.score > 0]
+    if not results:
+        console.print("[yellow]No positive-score sources found.[/yellow]")
+        return
+
     console.print("[bold]Sources[/bold]")
     for result in results:
         source = source_payload(result, query=query)

@@ -13,6 +13,17 @@ def make_document(text: str, metadata: dict | None = None) -> Document:
     )
 
 
+def make_pdf_document(text: str) -> Document:
+    return Document(
+        id="doc-pdf",
+        path="/tmp/resume.pdf",
+        file_name="resume.pdf",
+        file_type="pdf",
+        text=text,
+        metadata={"source_path": "/tmp/resume.pdf", "extension": ".pdf", "page_number": 1},
+    )
+
+
 def test_long_text_creates_multiple_chunks() -> None:
     text = "\n\n".join(f"Paragraph {index}. " + ("word " * 20) for index in range(10))
 
@@ -54,3 +65,12 @@ def test_metadata_and_source_fields_are_preserved() -> None:
 
 def test_empty_text_creates_no_chunks() -> None:
     assert chunk_document(make_document("   \n")) == []
+
+
+def test_pdf_documents_use_smaller_default_chunks() -> None:
+    text = " ".join(f"resume item {index}." for index in range(220))
+
+    chunks = chunk_documents([make_pdf_document(text)])
+
+    assert len(chunks) > 1
+    assert all(len(chunk.text) <= 500 for chunk in chunks)

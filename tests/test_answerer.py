@@ -1,6 +1,7 @@
 from personal_docs_qa.answerer import _local_answer_from_results, answer_question, answer_question_with_metadata
 from personal_docs_qa.indexer import build_index
 from personal_docs_qa.models import Chunk, SearchResult
+from personal_docs_qa.openai_answerer import OpenAIAnswerError
 
 
 def make_chunk(text: str, file_name: str, index: int) -> Chunk:
@@ -31,7 +32,7 @@ def test_weak_question_produces_cautious_answer() -> None:
     answer = answer_question(index, "What telescope should I buy?")
 
     assert answer.confidence == "low"
-    assert "I found related passages, but they may not fully answer the question." in answer.answer
+    assert "I could not find any matching passages" in answer.answer
     assert answer.warnings
 
 
@@ -49,7 +50,7 @@ def test_unrelated_question_does_not_invent_answer() -> None:
     answer = answer_question(index, "Which telescope should I buy?")
 
     assert answer.confidence == "low"
-    assert answer.answer.startswith("I found related passages")
+    assert answer.answer.startswith("I could not find any matching passages")
     assert "telescope" not in answer.answer.lower()
 
 
@@ -95,3 +96,60 @@ def test_answer_metadata_reports_modes_and_fallback() -> None:
     assert result.answer_mode_used == "local"
     assert result.answer_fallback_used is True
     assert result.warnings
+
+
+def test_openai_answer_mode_uses_synthesis_when_available(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        "personal_docs_qa.answerer.synthesize_answer",
+        lambda question, results, confidence: "Synthesized ByteDance answer. [1: resume.pdf]",
+    )
+    index = build_index([make_chunk("ByteDance internship involved Doubao fine-tuning.", "resume.pdf", 1)])
+
+    result = answer_question_with_metadata(
+        index,
+        "What did I do at ByteDance?",
+        retrieval_mode="tfidf",
+        answer_mode="openai",
+    )
+
+    assert result.answer_mode_used == "openai"
+    assert result.answer_fallback_used is False
+    assert result.answer.answer == "Synthesized ByteDance answer. [1: resume.pdf]"
+
+
+def test_openai_synthesis_gets_citation_appended_when_missing(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        "personal_docs_qa.answerer.synthesize_answer",
+        lambda question, results, confidence: "Synthesized ByteDance answer.",
+    )
+    index = build_index([make_chunk("ByteDance internship involved Doubao fine-tuning.", "resume.pdf", 1)])
+
+    result = answer_question_with_metadata(
+        index,
+        "What did I do at ByteDance?",
+        retrieval_mode="tfidf",
+        answer_mode="openai",
+    )
+
+    assert result.answer.answer.endswith("[1: resume.pdf]")
+
+
+def test_openai_answer_failure_falls_back_to_local(monkeypatch) -> None:
+    def fail_synthesis(question, results, confidence):
+        raise OpenAIAnswerError("OpenAI answer synthesis failed.")
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr("personal_docs_qa.answerer.synthesize_answer", fail_synthesis)
+    index = build_index([make_chunk("ByteDance internship involved Doubao fine-tuning.", "resume.pdf", 1)])
+
+    result = answer_question_with_metadata(
+        index,
+        "What did I do at ByteDance?",
+        retrieval_mode="tfidf",
+        answer_mode="openai",
+    )
+
+    assert result.answer_mode_used == "local"
+    assert result.answer_fallback_used is True

@@ -6,6 +6,10 @@ from personal_docs_qa.models import Chunk, Document, make_chunk_id
 
 
 SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+")
+DEFAULT_CHUNK_SIZE = 900
+DEFAULT_OVERLAP = 150
+PDF_CHUNK_SIZE = 500
+PDF_OVERLAP = 80
 
 
 def _split_paragraphs(text: str) -> list[str]:
@@ -58,7 +62,7 @@ def _find_span(text: str, chunk_text: str, start_at: int) -> tuple[int, int]:
     return start, start + len(chunk_text)
 
 
-def chunk_document(document: Document, chunk_size: int = 900, overlap: int = 150) -> list[Chunk]:
+def chunk_document(document: Document, chunk_size: int = DEFAULT_CHUNK_SIZE, overlap: int = DEFAULT_OVERLAP) -> list[Chunk]:
     """Split one document into paragraph-aware chunks."""
     text = document.text.strip()
     if not text:
@@ -114,11 +118,16 @@ def chunk_document(document: Document, chunk_size: int = 900, overlap: int = 150
 
 def chunk_documents(
     documents: list[Document],
-    chunk_size: int = 900,
-    overlap: int = 150,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    overlap: int = DEFAULT_OVERLAP,
 ) -> list[Chunk]:
     """Split multiple documents into searchable chunks."""
     chunks: list[Chunk] = []
     for document in documents:
-        chunks.extend(chunk_document(document, chunk_size=chunk_size, overlap=overlap))
+        document_chunk_size = chunk_size
+        document_overlap = overlap
+        if document.file_type == "pdf" and chunk_size == DEFAULT_CHUNK_SIZE and overlap == DEFAULT_OVERLAP:
+            document_chunk_size = PDF_CHUNK_SIZE
+            document_overlap = PDF_OVERLAP
+        chunks.extend(chunk_document(document, chunk_size=document_chunk_size, overlap=document_overlap))
     return chunks

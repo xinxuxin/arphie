@@ -15,7 +15,7 @@ The app supports:
 
 It runs without API keys by default. The fresh-clone path is fully local: load documents, chunk them, build a TF-IDF index, retrieve matching chunks, and answer conservatively from the retrieved evidence.
 
-Note: the OpenAI answer mode is exposed through the CLI and web metadata, but this take-home currently keeps synthesis conservative and falls back to local extractive answering. The OpenAI-enhanced path is fully implemented for embeddings and hybrid retrieval.
+The OpenAI-enhanced path is optional and covers both embeddings for retrieval and grounded answer synthesis from retrieved chunks.
 
 ## Quickstart: Local-Only
 
@@ -50,8 +50,8 @@ The default embedding model is `text-embedding-3-small`. The default embedding d
 ## Answer Modes
 
 - `local`: extractive local answer built only from retrieved chunks.
-- `openai`: intended for grounded answer synthesis from retrieved chunks, with citations. In the current take-home implementation, it falls back to local extractive answering rather than inventing unsupported synthesis.
-- `auto`: tries the strongest configured answer path first, then uses local fallback when OpenAI is unavailable or synthesis is not enabled.
+- `openai`: grounded answer synthesis from retrieved chunks, with citations. Requires `OPENAI_API_KEY`.
+- `auto`: uses OpenAI synthesis when available, then falls back to local extractive answering if OpenAI is unavailable or fails.
 
 The answer response always reports the requested mode, the mode actually used, whether fallback happened, confidence, warnings, and sources.
 
@@ -61,7 +61,7 @@ TF-IDF keeps the fresh-clone experience reliable. A reviewer can install the pac
 
 Embeddings improve semantic matching when the question uses different wording from the documents. Hybrid retrieval handles both exact terms and paraphrases by combining lexical and semantic signals.
 
-OpenAI answer synthesis is the natural next step for fluency, but the system still treats retrieved evidence as the authority. The app is intentionally cautious: if the evidence is weak, it says so.
+OpenAI answer synthesis improves fluency, but the system still treats retrieved evidence as the authority. The app is intentionally cautious: if the evidence is weak, it says so, and generated answers are constrained to retrieved chunks.
 
 Fallback behavior keeps the app robust. Missing API keys, OpenAI failures, old indexes without embeddings, and weak matches all produce readable warnings rather than raw stack traces.
 
@@ -145,7 +145,7 @@ Embedding quality depends on chunking. If chunks are too broad or too narrow, se
 
 Hybrid weights are heuristic. The current weights are reasonable for a small demo, but a larger eval set should tune them.
 
-OpenAI synthesis depends on retrieved evidence. If retrieval misses the right chunk, a fluent answer would still be poorly grounded. For that reason, this version stays conservative and uses local fallback.
+OpenAI synthesis depends on retrieved evidence. If retrieval misses the right chunk, a fluent answer would still be poorly grounded. The app mitigates that with citations, low-confidence warnings, and local fallback.
 
 PDF extraction only handles text-based PDFs through `pypdf`; scanned documents need OCR.
 

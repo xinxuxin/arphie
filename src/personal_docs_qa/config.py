@@ -9,6 +9,7 @@ DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_EMBEDDING_DIMENSIONS = 512
 DEFAULT_RETRIEVAL_MODE = "auto"
 DEFAULT_ANSWER_MODE = "auto"
+DEFAULT_ANSWER_MODEL = "gpt-4.1-mini"
 
 
 def get_openai_api_key() -> str | None:
@@ -41,6 +42,11 @@ def get_embedding_dimensions() -> int:
     except ValueError:
         return DEFAULT_EMBEDDING_DIMENSIONS
     return value if value > 0 else DEFAULT_EMBEDDING_DIMENSIONS
+
+
+def get_answer_model() -> str:
+    """Return the configured OpenAI answer synthesis model."""
+    return os.getenv("OPENAI_ANSWER_MODEL", DEFAULT_ANSWER_MODEL).strip() or DEFAULT_ANSWER_MODEL
 
 
 def get_default_retrieval_mode() -> str:

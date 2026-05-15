@@ -50,12 +50,33 @@ def compact_text(text: str) -> str:
     return " ".join((text or "").split())
 
 
-def make_excerpt(text: str, limit: int = 220) -> str:
-    """Create a short, stable excerpt."""
+def make_excerpt(text: str, limit: int = 220, query: str = "") -> str:
+    """Create a short excerpt, centered near the first query term when possible."""
     compact = compact_text(text)
     if len(compact) <= limit:
         return compact
-    return compact[: max(0, limit - 3)].rstrip() + "..."
+
+    match_start = None
+    compact_lower = compact.lower()
+    for term in query_terms(query):
+        index = compact_lower.find(term.lower())
+        if index != -1 and (match_start is None or index < match_start):
+            match_start = index
+
+    if match_start is None:
+        return compact[: max(0, limit - 3)].rstrip() + "..."
+
+    half_window = max(0, limit // 2)
+    start = max(0, match_start - half_window)
+    end = min(len(compact), start + limit)
+    if end == len(compact):
+        start = max(0, end - limit)
+    excerpt = compact[start:end].strip()
+    if start > 0:
+        excerpt = "..." + excerpt.lstrip()
+    if end < len(compact):
+        excerpt = excerpt.rstrip() + "..."
+    return excerpt
 
 
 def query_terms(query: str) -> list[str]:
@@ -110,7 +131,7 @@ def page_number(chunk: Chunk | None) -> int | None:
 def source_payload(result: SearchResult, query: str = "", excerpt_limit: int = 220) -> dict[str, Any]:
     """Build a robust serializable source payload for CLI or web display."""
     chunk = result.chunk
-    excerpt = make_excerpt(chunk.text, limit=excerpt_limit)
+    excerpt = make_excerpt(chunk.text, limit=excerpt_limit, query=query)
     should_highlight = result.retrieval_mode_used in {"tfidf", "hybrid"}
     highlighted_excerpt = highlight_query_terms_html(excerpt, query) if should_highlight else html.escape(excerpt)
     page = page_number(chunk)

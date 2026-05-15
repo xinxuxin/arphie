@@ -1,4 +1,5 @@
 from personal_docs_qa.config import (
+    get_answer_model,
     get_default_retrieval_mode,
     get_embedding_dimensions,
     get_embedding_model,
@@ -32,6 +33,16 @@ def test_embedding_defaults_and_env_overrides(monkeypatch) -> None:
 
     assert get_embedding_model() == "custom-model"
     assert get_embedding_dimensions() == 1536
+
+
+def test_answer_model_default_and_env_override(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_ANSWER_MODEL", raising=False)
+
+    assert get_answer_model() == "gpt-4.1-mini"
+
+    monkeypatch.setenv("OPENAI_ANSWER_MODEL", "custom-answer-model")
+
+    assert get_answer_model() == "custom-answer-model"
 
 
 def test_default_retrieval_mode_and_auto_fallback(monkeypatch) -> None:
